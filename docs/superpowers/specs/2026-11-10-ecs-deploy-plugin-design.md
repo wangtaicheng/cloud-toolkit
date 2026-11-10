@@ -55,7 +55,7 @@ EDAS / SAE / ACK / 函数计算部署；ECS 实例自动发现与云资源树；
 
 去掉 `cloud` 层后，插件分为四层，依赖方向单向向下：
 
-```
+```text
 ui ──> deploy ──> transfer
  │                   │
  └──────> settings <─┘
@@ -68,7 +68,7 @@ ui ──> deploy ──> transfer
 
 ### 4.2 包结构
 
-```
+```text
 src/main/java/com/cloudtoolkit/ecsdeploy/
 ├── settings/
 │   ├── EcsConnection.java              # 连接模型（非敏感字段 + 凭据引用键）
