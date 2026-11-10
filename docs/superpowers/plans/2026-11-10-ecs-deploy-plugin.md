@@ -10,7 +10,7 @@
 
 **规格：** `docs/superpowers/specs/2026-11-10-ecs-deploy-plugin-design.md`（执行者必须同时读规格与本计划）。
 
-**全局约束**
+## 全局约束
 
 - 目标平台 IDEA `262.*`（2026.2）及以上；`plugin.xml` 设 `since-build="262"`，不设 `until-build`。
 - 平台依赖 `com.intellij.modules.platform`、`com.intellij.modules.java`；Maven/Gradle 不列为插件依赖，构建由平台 Before launch 机制提供。
@@ -26,7 +26,7 @@
 - 命令在 Windows PowerShell 下用 `.\gradlew.bat`；Git Bash 下等价为 `./gradlew`。真实 ECS 凭据由执行者在本机 Settings 输入，不写进仓库与自动化测试。
 - 本机是 Windows：测试一律不依赖系统 shell；`TestSshServer` 用 JVM 内 `CommandFactory` 解释命令（见任务 4）。
 
-**审查重点（Review Focus）**
+## 审查重点（Review Focus）
 
 1. 连接配置被删除后，已保存的 Run Configuration 仍引用旧 `connectionId` → 期待编辑器提示「连接不存在，请重新选择」、`VALIDATE` 抛 `ConfigurationException`，不出现 NPE。
 2. 产物路径在 Before launch 构建前不存在、被填成目录、或为 0 字节文件 → 期待 `VALIDATE` 明确指出产物问题，且不建立 SSH 连接、不上传。
@@ -69,6 +69,7 @@
 ### 任务 1：工程骨架与构建链路
 
 **文件：**
+
 - 创建：`settings.gradle.kts`、`build.gradle.kts`、`gradle.properties`、`gradle/wrapper/gradle-wrapper.properties`、`gradlew`、`gradlew.bat`、`.gitignore`
 - 创建：`src/main/resources/META-INF/plugin.xml`（最小版：id / name / vendor / `idea-version` / `depends`）、`src/main/resources/messages/EcsDeployBundle.properties`
 - 创建：`README.md`（构建、`runIde`、打包、验收命令）
@@ -108,6 +109,7 @@ git commit -m "build: scaffold IntelliJ Platform 262 plugin project"
 ### 任务 2：领域模型、异常类族与工具函数
 
 **文件：**
+
 - 创建：`settings/EcsConnection.java`、`deploy/DeployStage.java`、`deploy/DeployContext.java`、`deploy/DeployException.java`、`util/PathUtils.java`、`util/OutputSanitizer.java`
 - 测试：`util/PathUtilsTest.java`、`util/OutputSanitizerTest.java`、`deploy/DeployContextTest.java`
 - 修改：`src/main/resources/messages/EcsDeployBundle.properties`（补校验与阶段文案）
@@ -199,6 +201,7 @@ git commit -m "feat: add domain model, exception taxonomy and path/output utilit
 ### 任务 3：凭据存储与连接配置服务
 
 **文件：**
+
 - 创建：`settings/CredentialStore.java`、`settings/EcsConnectionState.java`、`settings/EcsConnectionsService.java`
 - 测试：`settings/EcsConnectionStateTest.java`（纯 JUnit 5）、`settings/EcsConnectionsServiceTest.java`、`settings/CredentialStoreTest.java`（后两者继承 `LightPlatformTestCase`）
 - 修改：`src/main/resources/META-INF/plugin.xml`（注册 `com.intellij.applicationService`）
@@ -271,6 +274,7 @@ git commit -m "feat: persist named SSH connections with PasswordSafe credentials
 ### 任务 4：SSH 会话工厂、主机密钥策略与测试夹具
 
 **文件：**
+
 - 创建：`transfer/HostKeyPolicy.java`、`transfer/SshSessionFactory.java`、`transfer/TransferProgress.java`
 - 测试：`support/TestSshServer.java`、`transfer/HostKeyPolicyTest.java`、`transfer/SshSessionFactoryTest.java`
 - 修改：`src/main/resources/messages/EcsDeployBundle.properties`（认证与主机密钥错误文案）
@@ -355,6 +359,7 @@ git commit -m "feat: add SSH session factory with known_hosts verification"
 ### 任务 5：SFTP 传输与远程命令执行
 
 **文件：**
+
 - 创建：`transfer/RemoteFileTransfer.java`、`transfer/RemoteCommandExecutor.java`
 - 测试：`transfer/RemoteFileTransferTest.java`、`transfer/RemoteCommandExecutorTest.java`
 
@@ -434,6 +439,7 @@ git commit -m "feat: implement SFTP upload and streaming remote command executio
 ### 任务 6：部署流水线、观察接口与 EcsSshTarget
 
 **文件：**
+
 - 创建：`deploy/DeployTarget.java`、`deploy/DeployObserver.java`、`deploy/DeployPipeline.java`、`deploy/EcsSshTarget.java`
 - 测试：`deploy/DeployPipelineTest.java`、`deploy/EcsSshTargetTest.java`
 - 修改：`src/main/resources/messages/EcsDeployBundle.properties`（7 个阶段名、成功/失败/取消文案）
@@ -524,6 +530,7 @@ git commit -m "feat: add deploy pipeline with cancellation and ECS SSH target"
 ### 任务 7：Run Configuration 与设置编辑器
 
 **文件：**
+
 - 创建：`ui/EcsDeployConfigurationType.java`、`ui/EcsDeployRunConfiguration.java`、`ui/EcsDeployRunConfigurationOptions.java`、`ui/EcsDeploySettingsEditor.java`
 - 测试：`ui/EcsDeploySettingsEditorValidationTest.java`、`ui/EcsDeployRunConfigurationOptionsTest.java`（`LightPlatformTestCase`）
 - 修改：`src/main/resources/META-INF/plugin.xml`（注册 `com.intellij.configurationType`）
@@ -594,6 +601,7 @@ git commit -m "feat: add Deploy to ECS run configuration and settings editor"
 ### 任务 8：部署 Console、取消传播与执行入口
 
 **文件：**
+
 - 创建：`ui/DeployConsole.java`、`ui/DeployProcessHandler.java`、`ui/DeployNotifier.java`、`ui/EcsDeployRunProfileState.java`
 - 测试：`ui/DeployConsoleTest.java`、`ui/DeployProcessHandlerTest.java`（纯 JUnit 5，只测静态方法与取消语义，不启动 IDE）
 - 修改：`ui/EcsDeployRunConfiguration.java`（`getState` 返回 `EcsDeployRunProfileState`）、`src/main/resources/META-INF/plugin.xml`（注册 `com.intellij.notificationGroup`）
@@ -656,6 +664,7 @@ git commit -m "feat: wire deploy console, cancellation and execution entry point
 ### 任务 9：Settings 连接配置页与测试连接
 
 **文件：**
+
 - 创建：`settings/EcsConnectionsConfigurable.java`
 - 测试：`settings/EcsConnectionsConfigurableTest.java`（`LightPlatformTestCase`）
 - 修改：`src/main/resources/META-INF/plugin.xml`（注册 `com.intellij.applicationConfigurable`）、`src/main/resources/messages/EcsDeployBundle.properties`（主机密钥确认与跳过校验风险提示文案）
@@ -711,6 +720,7 @@ git commit -m "feat: add SSH connection settings page with connection test"
 ### 任务 10：注册补全、全量验证与真机验收
 
 **文件：**
+
 - 修改：`src/main/resources/META-INF/plugin.xml`（核对全部扩展点）、`README.md`（补验收清单与 Windows 命令）、`build.gradle.kts`（如任务 1 有遗留配置偏差）
 - 测试：无新增单元测试；本任务交付物是可安装产物与验收记录
 
