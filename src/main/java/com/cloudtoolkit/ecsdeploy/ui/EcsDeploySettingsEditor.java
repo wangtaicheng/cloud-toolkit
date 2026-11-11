@@ -4,10 +4,12 @@ import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.cloudtoolkit.ecsdeploy.util.PathUtils;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
+import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -17,6 +19,7 @@ import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.ButtonGroup;
 import javax.swing.JComponent;
@@ -311,6 +314,20 @@ public final class EcsDeploySettingsEditor extends SettingsEditor<EcsDeployRunCo
         }
     }
 
+    /** Rejects a configuration that cannot be deployed (e.g. hosts without credentials). */
+    private void validateEditorState() throws ConfigurationException {
+        for (EcsConnection host : deploymentHosts.getHosts()) {
+            if (host.username == null || host.username.isBlank()) {
+                throw new ConfigurationException("目标主机 " + host.host
+                        + " 未配置 SSH 凭据，请先在 Dashboard 的「属性」中配置");
+            }
+        }
+        String dir = targetDirField.getText().trim();
+        if (!dir.isEmpty() && !dir.startsWith("/")) {
+            throw new ConfigurationException("远端目录必须是绝对路径: " + dir);
+        }
+    }
+
     @Override
     protected void resetEditorFrom(@NotNull EcsDeployRunConfiguration configuration) {
         this.project = configuration.getProject();
@@ -345,7 +362,9 @@ public final class EcsDeploySettingsEditor extends SettingsEditor<EcsDeployRunCo
     }
 
     @Override
-    protected void applyEditorTo(@NotNull EcsDeployRunConfiguration configuration) {
+    protected void applyEditorTo(@NotNull EcsDeployRunConfiguration configuration)
+            throws ConfigurationException {
+        validateEditorState();
         EcsDeployRunConfigurationOptions options = configuration.getOptions();
         options.setBuildType(mavenRadio.isSelected()
                 ? EcsDeployRunConfigurationOptions.BUILD_MAVEN

@@ -2,6 +2,7 @@ package com.cloudtoolkit.ecsdeploy.deploy;
 
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.ConfigurationException;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
+import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
 import com.cloudtoolkit.ecsdeploy.util.PathUtils;
 
 import java.io.IOException;
@@ -74,6 +75,11 @@ public final class DeployContext {
     public void validate() throws ConfigurationException {
         if (connection == null) {
             throw new ConfigurationException("连接配置不存在，请重新选择");
+        }
+        if ((connection.username == null || connection.username.isBlank())
+                && !SshConfigResolver.providesUser(connection.host)) {
+            throw new ConfigurationException("目标主机 " + connection.host
+                    + " 未配置 SSH 凭据（缺少 SSH 配置），请在 Dashboard 的「属性」中重新选择或创建 SSH 配置");
         }
         if (artifactPath == null || !Files.isRegularFile(artifactPath)) {
             throw new ConfigurationException("构建产物不存在或不是文件: " + artifactPath);

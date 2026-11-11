@@ -6,6 +6,8 @@ import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.cloudtoolkit.ecsdeploy.settings.SshProfileCredentials;
 import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.transfer.SshClientConfig;
+import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
@@ -34,6 +36,8 @@ import javax.swing.JScrollPane;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.CardLayout;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
@@ -65,6 +69,8 @@ public final class AddHostDialog extends DialogWrapper {
 
     private final Project project;
     private final EcsConnection editing;
+    /** The OpenSSH configuration of the machine, used to resolve host aliases. */
+    private final SshClientConfig sshConfig = SshClientConfig.load(SshClientConfig.defaultFile());
 
     // ---- Tab: 添加主机 ----
     private final JBTextArea hostListArea = new JBTextArea(5, 32);
@@ -80,6 +86,7 @@ public final class AddHostDialog extends DialogWrapper {
     private final TextFieldWithBrowseButton privateKeyField = new TextFieldWithBrowseButton();
     private final JBPasswordField passphraseField = new JBPasswordField();
     private final JButton testButton = new JButton("测试连接状况");
+    private final JBLabel sshConfigHint = new JBLabel(" ");
     private JPanel profileFieldsPanel;
     private JPanel authCards;
 
@@ -172,11 +179,45 @@ public final class AddHostDialog extends DialogWrapper {
 
         testButton.addActionListener(e -> testConnection());
 
+        hostListArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                updateSshConfigHint();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                updateSshConfigHint();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                updateSshConfigHint();
+            }
+        });
+
         if (editing != null) {
             prefillForEdit();
         }
         syncProfileMode();
         syncTagMode();
+        updateSshConfigHint();
+    }
+
+    /** Shows how the OpenSSH configuration ({@code ~/.ssh/config}) resolves the first host. */
+    private void updateSshConfigHint() {
+        List<HostEntry> hosts = parseHostLines();
+        if (hosts.isEmpty()) {
+            sshConfigHint.setText(" ");
+            return;
+        }
+        String address = hosts.get(0).address();
+        String description = SshConfigResolver.describe(sshConfig, address);
+        sshConfigHint.setText(description == null
+                ? " "
+                : "已匹配 SSH 配置 " + address + " → " + description);
+        sshConfigHint.setForeground(description == null
+                ? JBColor.GRAY : new JBColor(new java.awt.Color(0x3574F0), new java.awt.Color(0x3574F0)));
     }
 
     private boolean isKeyAuth() {
@@ -362,6 +403,7 @@ public final class AddHostDialog extends DialogWrapper {
         JPanel form = FormBuilder.createFormBuilder()
                 .addLabeledComponent("待添加主机列表", hostListPanel)
                 .addLabeledComponent("端口号", portField)
+                .addComponent(sshConfigHint)
                 .addComponent(sectionLabel("SSH 配置"))
                 .addComponent(profileModeRow)
                 .addComponent(profileFieldsPanel)
@@ -653,7 +695,40 @@ public final class AddHostDialog extends DialogWrapper {
         } else {
             profile.passwd = new String(passwdField.getPassword());
         }
+        if (!confirmOverwriteExistingProfile(profile.name)) {
+            return -1;
+        }
         return CloudToolkitDb.getInstance().upsertProfile(profile);
+    }
+
+    /**
+     * A profile is stored by its unique name, so creating a configuration with an existing name
+     * overwrites its credentials - which would break every other host using it. Ask first.
+     */
+    private boolean confirmOverwriteExistingProfile(String name) {
+        CloudToolkitDb.ProfileRow existing = CloudToolkitDb.getInstance().findProfileByName(name);
+        if (existing == null || isProfileOfEditedHost(existing.id)) {
+            return true;
+        }
+        int answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                "已存在同名 SSH 配置 '" + name + "'，继续将覆盖它的凭据，"
+                        + "其它使用该配置的主机可能无法连接。是否继续？",
+                "覆盖 SSH 配置", com.intellij.openapi.ui.Messages.getQuestionIcon());
+        return answer == com.intellij.openapi.ui.Messages.YES;
+    }
+
+    /** Whether the profile is the one currently bound to the host being edited. */
+    private boolean isProfileOfEditedHost(int profileId) {
+        if (editing == null || editing.id == null) {
+            return false;
+        }
+        try {
+            CloudToolkitDb.HostRow host = CloudToolkitDb.getInstance()
+                    .findHostById(Integer.parseInt(editing.id));
+            return host != null && host.profileId == profileId;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     /** Keeps any stored deploy meta ({@link DeployMeta}) when overwriting the description. */
@@ -723,8 +798,11 @@ public final class AddHostDialog extends DialogWrapper {
         String result = EcsConnectionsConfigurable.testConnection(
                 connection, credentials.secret(), new HostKeyPolicy(true));
         boolean ok = "ok".equals(result);
+        String description = SshConfigResolver.describe(sshConfig, connection.host);
+        String target = description == null
+                ? connection.host : connection.host + " → " + description;
         com.intellij.openapi.ui.Messages.showInfoMessage(
-                ok ? "连接成功: " + connection.host : result,
+                ok ? "连接成功: " + target : result,
                 "测试连接状况");
     }
 }

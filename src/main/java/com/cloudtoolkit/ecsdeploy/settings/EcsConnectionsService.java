@@ -46,6 +46,19 @@ public final class EcsConnectionsService {
         }
     }
 
+    /** The stored host with the given address, or null when there is none. */
+    public @Nullable EcsConnection findByAddress(String address) {
+        if (address == null || address.isBlank()) {
+            return null;
+        }
+        for (EcsConnection connection : list()) {
+            if (address.equalsIgnoreCase(connection.host)) {
+                return connection;
+            }
+        }
+        return null;
+    }
+
     public List<EcsConnection> findByTag(String tagName) {
         List<EcsConnection> result = new ArrayList<>();
         CloudToolkitDb.TagRow tag = db.findTagByName(tagName);

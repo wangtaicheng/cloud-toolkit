@@ -19,13 +19,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SshSessionFactoryTest {
 
+    @TempDir
+    Path tempDir;
+
     private TestSshServer server;
     private SshSessionFactory factory;
 
     @BeforeEach
     void setUp() throws Exception {
         server = TestSshServer.start();
-        factory = new SshSessionFactory(new HostKeyPolicy(true));
+        // An explicit (missing) configuration keeps the SSH configuration of the machine out.
+        factory = new SshSessionFactory(new HostKeyPolicy(true), tempDir.resolve("ssh_config"));
     }
 
     @AfterEach
@@ -77,5 +81,24 @@ class SshSessionFactoryTest {
         c.hasPassphrase = true;
 
         assertThrows(SshAuthenticationException.class, () -> factory.open(c, null));
+    }
+
+    @Test
+    void connectsToTheHostOfTheSshConfiguration() throws Exception {
+        Path config = Files.writeString(tempDir.resolve("config"), """
+                Host 107
+                    HostName 127.0.0.1
+                    Port %d
+                    User test
+                """.formatted(server.port()));
+
+        EcsConnection c = conn(AuthType.PASSWORD);
+        c.host = "107";
+        c.port = 22;
+
+        try (SshSessionFactory aliasFactory = new SshSessionFactory(new HostKeyPolicy(true), config);
+             ClientSession session = aliasFactory.open(c, "pw")) {
+            assertTrue(session.isAuthenticated());
+        }
     }
 }

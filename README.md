@@ -8,6 +8,20 @@
 - 构建需要 JDK 25（本机 `D:/Program/java/zulu25`），编译目标为 Java 21
 - 本机 IDEA 安装：`D:/Program/JetBrains/idea-2026.2.4.win`
 
+## SSH 配置来源
+
+主机地址既可以直接写 IP，也可以写 `~/.ssh/config` 里的别名（例如 `Host 107`），插件会按 `ssh 107` 的方式解析：
+
+| 指令 | 作用 |
+| --- | --- |
+| `HostName` | 别名对应的真实地址 |
+| `Port` | 插件端口仍为默认 22 时生效 |
+| `User` | 插件未配置用户名时生效 |
+| `IdentityFile` | 插件未配置私钥时生效 |
+| `ProxyJump` | 自动经该跳板机隧道连接 |
+
+插件中显式保存的用户名、私钥、非 22 端口优先级更高，不会被配置文件覆盖。
+
 ## 常用命令（Windows PowerShell）
 
 ```powershell

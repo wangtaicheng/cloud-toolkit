@@ -12,6 +12,7 @@ import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteFileTransfer;
+import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTerminalOpener;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTtyConnector;
@@ -64,6 +65,7 @@ public final class EcsDeployRunProfileState implements RunProfileState {
             public void run(@NotNull ProgressIndicator indicator) {
                 SshSessionFactory factory = new SshSessionFactory();
                 try {
+                    validateHosts(hosts);
                     Path artifact = resolveArtifact(project, options, console);
                     for (EcsConnection host : hosts) {
                         if (isCancelled(indicator, stopRequested)) {
@@ -112,6 +114,17 @@ public final class EcsDeployRunProfileState implements RunProfileState {
         DeployPipeline pipeline = new DeployPipeline(target, console,
                 () -> stopRequested.get() || indicator.isCanceled());
         pipeline.run(context);
+    }
+
+    /** Fails fast when a target host has no usable SSH credentials. */
+    private static void validateHosts(List<EcsConnection> hosts) throws ConfigurationException {
+        for (EcsConnection host : hosts) {
+            boolean hasUser = host.username != null && !host.username.isBlank();
+            if (!hasUser && !SshConfigResolver.providesUser(host.host)) {
+                throw new ConfigurationException("目标主机 " + host.host
+                        + " 未配置 SSH 凭据（缺少 SSH 配置），请在 Dashboard 的「属性」中重新选择或创建 SSH 配置");
+            }
+        }
     }
 
     /** Resolves the artifact to upload: either the configured file or a fresh local build. */

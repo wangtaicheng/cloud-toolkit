@@ -15,13 +15,14 @@ import org.apache.sshd.common.util.security.SecurityUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 
 public final class SshSessionFactory implements AutoCloseable {
@@ -29,17 +30,31 @@ public final class SshSessionFactory implements AutoCloseable {
     public static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     public static final Duration AUTH_TIMEOUT = Duration.ofSeconds(15);
 
+    /** How many jump hosts a connection may chain through. */
+    private static final int MAX_JUMP_DEPTH = 5;
+
     private final HostKeyPolicy hostKeyPolicy;
     private final SshClient client;
+    /** The OpenSSH configuration to apply; {@code null} means {@code ~/.ssh/config}. */
+    private final Path sshConfigFile;
     /** Jump-host sessions opened while tunneling; closed together with the factory. */
-    private final java.util.List<ClientSession> openedProxies = new java.util.ArrayList<>();
+    private final List<ClientSession> openedProxies = new ArrayList<>();
 
     public SshSessionFactory() {
         this(new HostKeyPolicy());
     }
 
     public SshSessionFactory(HostKeyPolicy hostKeyPolicy) {
+        this(hostKeyPolicy, null);
+    }
+
+    /**
+     * @param sshConfigFile the OpenSSH configuration used to resolve host aliases, or
+     *                       {@code null} to use {@code ~/.ssh/config}
+     */
+    public SshSessionFactory(HostKeyPolicy hostKeyPolicy, Path sshConfigFile) {
         this.hostKeyPolicy = Objects.requireNonNull(hostKeyPolicy);
+        this.sshConfigFile = sshConfigFile;
         this.client = SshClient.setUpDefaultClient();
         client.setServerKeyVerifier(hostKeyPolicy.verifier());
         client.start();
@@ -51,29 +66,86 @@ public final class SshSessionFactory implements AutoCloseable {
 
     public ClientSession open(EcsConnection connection, String secret)
             throws IOException, SshConnectException, SshAuthenticationException {
-        return open(connection, secret, 0);
+        return open(connection, secret, 0, true);
     }
 
-    private ClientSession open(EcsConnection connection, String secret, int depth)
+    /**
+     * Opens a session for the given connection.
+     *
+     * @param useConfigJump whether the {@code ProxyJump} of the OpenSSH configuration may be used;
+     *                      it is skipped for a jump host that was opened because of it
+     */
+    private ClientSession open(EcsConnection connection, String secret, int depth, boolean useConfigJump)
             throws IOException, SshConnectException, SshAuthenticationException {
         if (connection == null) {
             throw new SshAuthenticationException("连接不存在，请重新选择");
         }
-        if (depth > 5) {
+        if (depth > MAX_JUMP_DEPTH) {
             throw new SshConnectException("跳板机层级过深，已停止连接");
         }
 
-        // Open the jump-host session first if this host is configured behind a proxy.
+        SshClientConfig config = SshClientConfig.load(configFile());
+        SshConfigResolver.Target target = SshConfigResolver.resolve(connection, config);
+
         ClientSession proxySession = null;
         if (connection.proxyId > 0) {
-            EcsConnection proxy = EcsConnectionsService.getInstance()
-                    .findById(String.valueOf(connection.proxyId));
+            // A jump host configured in the plugin wins over the one of the OpenSSH configuration.
+            EcsConnectionsService service = service();
+            EcsConnection proxy = service == null ? null
+                    : service.findById(String.valueOf(connection.proxyId));
             if (proxy == null) {
                 throw new SshConnectException("跳板机不存在 (id=" + connection.proxyId + ")");
             }
-            String proxySecret = EcsConnectionsService.getInstance()
-                    .getSecret(String.valueOf(connection.proxyId));
-            proxySession = open(proxy, proxySecret, depth + 1);
+            String proxySecret = service.getSecret(String.valueOf(connection.proxyId));
+            proxySession = open(proxy, proxySecret, depth + 1, true);
+        } else if (useConfigJump && target.jump() != null) {
+            proxySession = openJump(target.jump(), secret, depth + 1);
+        }
+        return connect(target, secret, proxySession);
+    }
+
+    /** Opens the jump host of the OpenSSH configuration (a stored host provides its credentials). */
+    private ClientSession openJump(SshConfigResolver.Target jump, String secret, int depth)
+            throws IOException, SshConnectException, SshAuthenticationException {
+        EcsConnectionsService service = service();
+        if (service != null) {
+            EcsConnection stored = service.findByAddress(jump.alias());
+            if (stored != null) {
+                return open(stored, service.getSecret(stored.id), depth, false);
+            }
+        }
+        return openTarget(jump, secret, depth);
+    }
+
+    /** The local database of the stored hosts, or null when it is not available. */
+    private static EcsConnectionsService service() {
+        try {
+            return EcsConnectionsService.getInstance();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Opens a target that was already resolved (used for the jump host chain). */
+    private ClientSession openTarget(SshConfigResolver.Target target, String secret, int depth)
+            throws IOException, SshConnectException, SshAuthenticationException {
+        ClientSession proxySession = null;
+        if (target.jump() != null) {
+            proxySession = openTarget(target.jump(), secret, depth + 1);
+        }
+        return connect(target, secret, proxySession);
+    }
+
+    /** Connects to the target and authenticates it, optionally through a jump host. */
+    private ClientSession connect(SshConfigResolver.Target target, String secret,
+                                  ClientSession proxySession)
+            throws IOException, SshConnectException, SshAuthenticationException {
+        if (target.username() == null || target.username().isBlank()) {
+            throw new SshAuthenticationException("主机 " + target.host()
+                    + " 未配置 SSH 用户名（缺少 SSH 配置），请在「属性」中重新选择或创建 SSH 配置");
+        }
+        if (target.passphraseRequired() && (secret == null || secret.isBlank())) {
+            throw new SshAuthenticationException("私钥口令缺失，请重新输入");
         }
 
         ClientSession session;
@@ -81,36 +153,47 @@ public final class SshSessionFactory implements AutoCloseable {
             if (proxySession != null) {
                 // Tunnel to the real host through the jump host's local port forward.
                 SshdSocketAddress local = new SshdSocketAddress("127.0.0.1", 0);
-                SshdSocketAddress remote = new SshdSocketAddress(connection.host, connection.port);
+                SshdSocketAddress remote = new SshdSocketAddress(target.host(), target.port());
                 SshdSocketAddress bound = proxySession.startLocalPortForwarding(local, remote);
-                session = client.connect(connection.username, bound.getHostName(), bound.getPort())
+                session = client.connect(target.username(), bound.getHostName(), bound.getPort())
                         .verify(CONNECT_TIMEOUT)
                         .getSession();
             } else {
-                session = client.connect(connection.username, connection.host, connection.port)
+                session = client.connect(target.username(), target.host(), target.port())
                         .verify(CONNECT_TIMEOUT)
                         .getSession();
             }
         } catch (IOException | RuntimeException e) {
             closeQuietly(proxySession);
             throw new SshConnectException(
-                    "无法连接 " + connection.host + ":" + connection.port
-                            + (proxySession != null ? " (经跳板机)" : ""), e);
+                    "无法连接 " + target.host() + ":" + target.port()
+                            + (proxySession != null ? " (经跳板机)" : "")
+                            + (target.fromAlias() ? "（SSH 配置 " + target.alias() + "）" : ""), e);
         }
 
         try {
-            if (connection.authType == EcsConnection.AuthType.PRIVATE_KEY) {
-                session.addPublicKeyIdentity(loadKeyPair(connection, secret));
-            } else {
-                if (secret == null || secret.isBlank()) {
-                    throw new SshAuthenticationException("SSH 密码缺失，请重新输入");
-                }
+            boolean credential = false;
+            if (target.privateKeyPath() != null) {
+                // A key of the OpenSSH configuration has no passphrase in the plugin.
+                String passphrase = target.keyFromConfig() ? null : secret;
+                session.addPublicKeyIdentity(loadKeyPair(target.privateKeyPath(), passphrase,
+                        target.keyFromConfig()));
+                credential = true;
+            }
+            if (target.passwordAuth() && secret != null && !secret.isBlank()) {
                 session.addPasswordIdentity(secret);
+                credential = true;
+            }
+            if (!credential) {
+                throw new SshAuthenticationException(target.authType() == EcsConnection.AuthType.PRIVATE_KEY
+                        ? "未配置私钥文件路径"
+                        : "SSH 密码缺失，请重新输入");
             }
             AuthFuture auth = session.auth();
             auth.verify(AUTH_TIMEOUT);
             if (!session.isAuthenticated()) {
-                throw new SshAuthenticationException("SSH 认证失败");
+                throw new SshAuthenticationException("SSH 认证失败: 用户名 "
+                        + target.username() + " @ " + target.host() + ":" + target.port());
             }
             if (proxySession != null) {
                 openedProxies.add(proxySession);
@@ -127,22 +210,21 @@ public final class SshSessionFactory implements AutoCloseable {
         }
     }
 
-    private static KeyPair loadKeyPair(EcsConnection connection, String secret)
+    /** The OpenSSH configuration in use. */
+    private Path configFile() {
+        return sshConfigFile == null ? SshClientConfig.defaultFile() : sshConfigFile;
+    }
+
+    private static KeyPair loadKeyPair(String privateKeyPath, String passphrase, boolean fromConfig)
             throws SshAuthenticationException {
-        if (connection.privateKeyPath == null || connection.privateKeyPath.isBlank()) {
-            throw new SshAuthenticationException("未配置私钥文件路径");
-        }
-        Path path = PathUtils.expandHome(connection.privateKeyPath);
+        Path path = PathUtils.expandHome(privateKeyPath);
         if (!Files.isRegularFile(path)) {
             throw new SshAuthenticationException("私钥文件不存在：" + path);
         }
-        if (connection.hasPassphrase && (secret == null || secret.isBlank())) {
-            throw new SshAuthenticationException("私钥口令缺失，请重新输入");
-        }
 
-        FilePasswordProvider provider = (secret == null || secret.isBlank())
+        FilePasswordProvider provider = (passphrase == null || passphrase.isBlank())
                 ? FilePasswordProvider.EMPTY
-                : FilePasswordProvider.of(secret);
+                : FilePasswordProvider.of(passphrase);
         try (InputStream in = Files.newInputStream(path)) {
             Iterator<KeyPair> pairs = SecurityUtils
                     .loadKeyPairIdentities(null, NamedResource.ofName(path.toString()), in, provider)
@@ -152,7 +234,8 @@ public final class SshSessionFactory implements AutoCloseable {
             }
             return pairs.next();
         } catch (IOException | GeneralSecurityException | RuntimeException e) {
-            throw new SshAuthenticationException("无法解析私钥文件：" + path, e);
+            throw new SshAuthenticationException("无法解析私钥文件：" + path
+                    + (fromConfig ? "（该私钥来自 SSH 配置，若已加密请在「属性」中配置口令）" : ""), e);
         }
     }
 

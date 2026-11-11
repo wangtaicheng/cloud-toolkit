@@ -3,6 +3,7 @@ package com.cloudtoolkit.ecsdeploy.settings;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshAuthenticationException;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshConnectException;
 import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
@@ -221,12 +222,14 @@ public final class EcsConnectionsConfigurable implements Configurable {
     }
 
     private static void confirmHostKey(EcsConnection connection, PublicKey key) {
+        // The host key is stored for the address that was really connected to.
+        SshConfigResolver.Target target = SshConfigResolver.resolve(connection);
         String text = MessageFormat.format(message("dialog.host.key.confirm"),
-                connection.host, HostKeyPolicy.fingerprint(key));
+                target.host(), HostKeyPolicy.fingerprint(key));
         int answer = Messages.showYesNoDialog(ProjectManager.getInstance().getDefaultProject(),
                 text, "确认主机密钥", null);
         if (answer == Messages.YES) {
-            HostKeyPolicy.write(HostKeyPolicy.defaultKnownHosts(), connection.host, connection.port, key);
+            HostKeyPolicy.write(HostKeyPolicy.defaultKnownHosts(), target.host(), target.port(), key);
         }
     }
 
