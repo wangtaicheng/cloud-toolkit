@@ -15,5 +15,6 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService"/>
+        <configurationType implementation="com.cloudtoolkit.ecsdeploy.ui.EcsDeployConfigurationType"/>
     </extensions>
 </idea-plugin>
