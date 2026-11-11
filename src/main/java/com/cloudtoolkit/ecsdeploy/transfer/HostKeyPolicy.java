@@ -23,6 +23,7 @@ public final class HostKeyPolicy {
     public enum Decision { ACCEPT, UNKNOWN, CHANGED }
 
     private final boolean skipVerification;
+    private volatile PublicKey unknownServerKey;
 
     public HostKeyPolicy() {
         this(false);
@@ -93,6 +94,14 @@ public final class HostKeyPolicy {
         return PathUtils.expandHome("~/.ssh/known_hosts");
     }
 
+    public PublicKey unknownServerKey() {
+        return unknownServerKey;
+    }
+
+    public void clearUnknownServerKey() {
+        unknownServerKey = null;
+    }
+
     public ServerKeyVerifier verifier() {
         return (ClientSession session, SocketAddress address, PublicKey key) -> {
             if (!(address instanceof InetSocketAddress socket)) {
@@ -101,7 +110,11 @@ public final class HostKeyPolicy {
             String host = socket.getAddress() != null
                     ? socket.getAddress().getHostAddress()
                     : socket.getHostString();
-            return evaluate(defaultKnownHosts(), host, socket.getPort(), key) == Decision.ACCEPT;
+            Decision decision = evaluate(defaultKnownHosts(), host, socket.getPort(), key);
+            if (decision == Decision.UNKNOWN) {
+                unknownServerKey = key;
+            }
+            return decision == Decision.ACCEPT;
         };
     }
 

@@ -17,5 +17,8 @@
         <applicationService serviceImplementation="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService"/>
         <configurationType implementation="com.cloudtoolkit.ecsdeploy.ui.EcsDeployConfigurationType"/>
         <notificationGroup id="cloud-toolkit.ecs.deploy" displayType="BALLOON" key="notification.group"/>
+        <applicationConfigurable instance="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable"
+                                 id="cloud-toolkit.ecs.connections"
+                                 displayName="Cloud Toolkit - ECS Deploy"/>
     </extensions>
 </idea-plugin>
