@@ -16,5 +16,6 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService"/>
         <configurationType implementation="com.cloudtoolkit.ecsdeploy.ui.EcsDeployConfigurationType"/>
+        <notificationGroup id="cloud-toolkit.ecs.deploy" displayType="BALLOON" key="notification.group"/>
     </extensions>
 </idea-plugin>

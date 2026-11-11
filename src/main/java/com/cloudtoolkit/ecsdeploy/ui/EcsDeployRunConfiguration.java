@@ -15,7 +15,6 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
@@ -41,9 +40,9 @@ public final class EcsDeployRunConfiguration extends RunConfigurationBase<EcsDep
     }
 
     @Override
-    public @Nullable RunProfileState getState(@NotNull Executor executor,
+    public @NotNull RunProfileState getState(@NotNull Executor executor,
                                              @NotNull ExecutionEnvironment environment) {
-        return null;
+        return new EcsDeployRunProfileState(this);
     }
 
     public DeployContext toContext() throws ConfigurationException {
