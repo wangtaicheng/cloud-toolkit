@@ -52,6 +52,7 @@ public final class EcsDeployRunConfiguration extends RunConfigurationBase<EcsDep
         }
         String secret = EcsConnectionsService.getInstance().getSecret(connection.id);
         return new DeployContext(connection, secret, Path.of(options.getArtifactPath()),
-                options.getRemoteDirectory(), options.getStopCommand(), options.getStartCommand());
+                options.getRemoteDirectory(), options.getStopCommand(), options.getStartCommand(),
+                options.getBeforeDeployCommand(), options.getAfterDeployCommand());
     }
 }

@@ -66,8 +66,8 @@ public class EcsDeploySettingsEditorValidationTest extends LightPlatformTestCase
         EcsDeployRunConfigurationOptions options = validOptions();
         options.setStartCommand("");
 
-        assertTrue(EcsDeploySettingsEditor.validate(options, service).stream()
-                .anyMatch(message -> message.contains("start")));
+        // The deploy commands are optional, so an empty one is not an error.
+        assertTrue(EcsDeploySettingsEditor.validate(options, service).isEmpty());
     }
 
     public void testStopCommandMayBeEmpty() {

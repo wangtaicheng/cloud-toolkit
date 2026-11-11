@@ -20,8 +20,8 @@
         <applicationConfigurable instance="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable"
                                  id="cloud-toolkit.ecs.connections"
                                  displayName="Cloud Toolkit - ECS Deploy"/>
-        <toolWindow id="Cloud Toolkit"
-                    anchor="right"
-                    factoryClass="com.cloudtoolkit.ecsdeploy.ui.CloudToolkitToolWindow"/>
+        <toolWindow id="Cloud Toolkit View"
+                    anchor="bottom"
+                    factoryClass="com.cloudtoolkit.ecsdeploy.ui.CloudToolkitToolWindow" canCloseContents="true"/>
     </extensions>
 </idea-plugin>

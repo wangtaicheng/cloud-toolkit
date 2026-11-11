@@ -16,15 +16,25 @@ public final class DeployContext {
     private final String remoteDirectory;
     private final String stopCommand;
     private final String startCommand;
+    private final String beforeDeployCommand;
+    private final String afterDeployCommand;
 
     public DeployContext(EcsConnection connection, String secret, Path artifactPath,
                          String remoteDirectory, String stopCommand, String startCommand) {
+        this(connection, secret, artifactPath, remoteDirectory, stopCommand, startCommand, "", "");
+    }
+
+    public DeployContext(EcsConnection connection, String secret, Path artifactPath,
+                         String remoteDirectory, String stopCommand, String startCommand,
+                         String beforeDeployCommand, String afterDeployCommand) {
         this.connection = connection;
         this.secret = secret;
         this.artifactPath = artifactPath;
         this.remoteDirectory = remoteDirectory;
         this.stopCommand = stopCommand;
         this.startCommand = startCommand;
+        this.beforeDeployCommand = beforeDeployCommand == null ? "" : beforeDeployCommand;
+        this.afterDeployCommand = afterDeployCommand == null ? "" : afterDeployCommand;
     }
 
     public EcsConnection connection() {
@@ -51,6 +61,16 @@ public final class DeployContext {
         return startCommand;
     }
 
+    /** Command executed on the target host before the artifact is uploaded. */
+    public String beforeDeployCommand() {
+        return beforeDeployCommand;
+    }
+
+    /** Command executed on the target host after the deployment finished. */
+    public String afterDeployCommand() {
+        return afterDeployCommand;
+    }
+
     public void validate() throws ConfigurationException {
         if (connection == null) {
             throw new ConfigurationException("连接配置不存在，请重新选择");
@@ -68,9 +88,7 @@ public final class DeployContext {
         if (remoteDirectory == null || !PathUtils.isAbsoluteRemote(remoteDirectory)) {
             throw new ConfigurationException("远端目录必须是绝对路径: " + remoteDirectory);
         }
-        if (startCommand == null || startCommand.isBlank()) {
-            throw new ConfigurationException("start 命令不能为空");
-        }
+        // The commands are optional: when they are empty nothing is executed on the host.
     }
 
     @Override

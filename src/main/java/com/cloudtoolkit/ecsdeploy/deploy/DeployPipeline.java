@@ -33,6 +33,13 @@ public final class DeployPipeline {
             target.prepare(ctx);
             checkCancelled();
 
+            observer.onStage(DeployStage.BEFORE_DEPLOY);
+            int beforeExitCode = target.beforeDeploy(ctx, observer::onOutput, canceled);
+            if (beforeExitCode != 0) {
+                observer.onOutput(true, "部署前命令退出码 " + beforeExitCode + "，继续部署");
+            }
+            checkCancelled();
+
             observer.onStage(DeployStage.UPLOAD);
             target.upload(ctx, observer::onProgress, canceled);
             checkCancelled();
@@ -44,10 +51,20 @@ public final class DeployPipeline {
             }
             checkCancelled();
 
-            observer.onStage(DeployStage.START);
-            int startExitCode = target.start(ctx, observer::onOutput, canceled);
-            if (startExitCode != 0) {
-                throw new RemoteCommandException(startExitCode, List.of());
+            if (!isBlank(ctx.startCommand())) {
+                observer.onStage(DeployStage.START);
+                int startExitCode = target.start(ctx, observer::onOutput, canceled);
+                if (startExitCode != 0) {
+                    throw new RemoteCommandException(startExitCode, List.of());
+                }
+            }
+
+            if (!isBlank(ctx.afterDeployCommand())) {
+                observer.onStage(DeployStage.AFTER_DEPLOY);
+                int afterExitCode = target.afterDeploy(ctx, observer::onOutput, canceled);
+                if (afterExitCode != 0) {
+                    observer.onOutput(true, "部署后命令退出码 " + afterExitCode);
+                }
             }
             success = true;
         } finally {
@@ -61,5 +78,9 @@ public final class DeployPipeline {
         if (canceled.getAsBoolean()) {
             throw new DeploymentCanceledException();
         }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

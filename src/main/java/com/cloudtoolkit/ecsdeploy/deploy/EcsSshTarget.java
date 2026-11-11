@@ -43,6 +43,12 @@ public final class EcsSshTarget implements DeployTarget {
     }
 
     @Override
+    public int beforeDeploy(DeployContext ctx, BiConsumer<Boolean, String> output,
+                            BooleanSupplier canceled) throws DeployException {
+        return runOptional(ctx.beforeDeployCommand(), output, canceled, "部署前命令执行失败");
+    }
+
+    @Override
     public void upload(DeployContext ctx, Consumer<TransferProgress> progress,
                        BooleanSupplier canceled) throws DeployException {
         try {
@@ -68,10 +74,32 @@ public final class EcsSshTarget implements DeployTarget {
     @Override
     public int start(DeployContext ctx, BiConsumer<Boolean, String> output,
                      BooleanSupplier canceled) throws DeployException {
+        if (ctx.startCommand() == null || ctx.startCommand().isBlank()) {
+            return 0;
+        }
         try {
             return executor.executeOrThrow(session, ctx.startCommand(), output, canceled);
         } catch (IOException e) {
             throw new DeployException("start 命令执行失败", e);
+        }
+    }
+
+    @Override
+    public int afterDeploy(DeployContext ctx, BiConsumer<Boolean, String> output,
+                           BooleanSupplier canceled) throws DeployException {
+        return runOptional(ctx.afterDeployCommand(), output, canceled, "部署后命令执行失败");
+    }
+
+    /** Runs a command when it is configured, otherwise does nothing. */
+    private int runOptional(String command, BiConsumer<Boolean, String> output,
+                            BooleanSupplier canceled, String errorMessage) throws DeployException {
+        if (command == null || command.isBlank()) {
+            return 0;
+        }
+        try {
+            return executor.execute(session, command, output, canceled);
+        } catch (IOException e) {
+            throw new DeployException(errorMessage, e);
         }
     }
 

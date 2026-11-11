@@ -48,7 +48,8 @@ class DeployPipelineTest {
         pipeline.run(validContext());
 
         assertEquals(List.of(DeployStage.VALIDATE, DeployStage.CONNECT, DeployStage.PREPARE,
-                DeployStage.UPLOAD, DeployStage.STOP, DeployStage.START, DeployStage.FINISH),
+                DeployStage.BEFORE_DEPLOY, DeployStage.UPLOAD, DeployStage.STOP, DeployStage.START,
+                DeployStage.FINISH),
                 observer.stages());
         assertTrue(target.calls.containsAll(List.of("prepare", "upload", "stop", "start")));
         assertTrue(target.closed);
@@ -61,6 +62,25 @@ class DeployPipelineTest {
         pipeline.run(validContext());
 
         assertTrue(target.calls.contains("start"));
+    }
+
+    @Test
+    void runsTheBeforeAndAfterDeployCommands() throws Exception {
+        EcsConnection connection = new EcsConnection();
+        connection.id = "c1";
+        connection.host = "127.0.0.1";
+        connection.username = "test";
+        connection.authType = EcsConnection.AuthType.PASSWORD;
+        DeployContext ctx = new DeployContext(connection, "pw", dir.resolve("app.jar"), "/opt/app",
+                "echo stop", "", "echo before", "echo after");
+
+        pipeline.run(ctx);
+
+        assertTrue(target.calls.contains("beforeDeploy"));
+        assertTrue(target.calls.contains("afterDeploy"));
+        assertTrue(observer.stages().contains(DeployStage.BEFORE_DEPLOY));
+        assertTrue(observer.stages().contains(DeployStage.AFTER_DEPLOY));
+        assertFalse(observer.stages().contains(DeployStage.START));
     }
 
     @Test
@@ -149,6 +169,20 @@ class DeployPipelineTest {
         public void upload(DeployContext ctx, Consumer<TransferProgress> progress,
                            BooleanSupplier canceled) throws DeployException {
             enter("upload");
+        }
+
+        @Override
+        public int beforeDeploy(DeployContext ctx, BiConsumer<Boolean, String> output,
+                                BooleanSupplier canceled) throws DeployException {
+            enter("beforeDeploy");
+            return 0;
+        }
+
+        @Override
+        public int afterDeploy(DeployContext ctx, BiConsumer<Boolean, String> output,
+                               BooleanSupplier canceled) throws DeployException {
+            enter("afterDeploy");
+            return 0;
         }
 
         @Override
