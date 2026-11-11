@@ -16,6 +16,7 @@ java {
 }
 
 repositories {
+    mavenLocal()
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
@@ -25,7 +26,7 @@ repositories {
 dependencies {
     intellijPlatform {
         local("D:/Program/JetBrains/idea-2026.2.4.win")
-        testFramework(TestFrameworkType.Platform)
+        testFramework(TestFrameworkType.Platform, "262.11879.100")
     }
 
     implementation("org.apache.sshd:sshd-core:2.19.0") {
@@ -59,7 +60,7 @@ intellijPlatform {
 }
 
 tasks.withType<JavaCompile> {
-    options.release.set(21)
+    options.release.set(25)
 }
 
 tasks.withType<Test> {
