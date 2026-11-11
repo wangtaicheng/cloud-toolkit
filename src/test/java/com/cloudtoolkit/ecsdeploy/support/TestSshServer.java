@@ -80,7 +80,7 @@ public final class TestSshServer {
         server.setFileSystemFactory(fileSystem);
 
         SftpSubsystemFactory sftp = new SftpSubsystemFactory.Builder()
-                .withFileSystemAccessor(new ReadOnlyGuard(readOnly))
+                .withFileSystemAccessor(new ReadOnlyGuard())
                 .build();
         server.setSubsystemFactories(List.of(sftp));
 
@@ -317,17 +317,13 @@ public final class TestSshServer {
 
     private static final class ReadOnlyGuard implements SftpFileSystemAccessor {
 
-        private final Path readOnly;
-
-        private ReadOnlyGuard(Path readOnly) {
-            this.readOnly = readOnly;
-        }
+        private static final String READ_ONLY_PREFIX = "/readonly";
 
         @Override
         public SeekableByteChannel openFile(SftpSubsystemProxy proxy, FileHandle handle, Path file,
                                            String mode, Set<? extends OpenOption> options,
                                            FileAttribute<?>... attrs) throws IOException {
-            if (file.startsWith(readOnly) && isWrite(options, mode)) {
+            if (isUnderReadOnly(file) && isWrite(options, mode)) {
                 throw new AccessDeniedException(file.toString());
             }
             return SftpFileSystemAccessor.DEFAULT.openFile(proxy, handle, file, mode, options, attrs);
@@ -335,7 +331,7 @@ public final class TestSshServer {
 
         @Override
         public void createDirectory(SftpSubsystemProxy proxy, Path path) throws IOException {
-            if (path.startsWith(readOnly)) {
+            if (isUnderReadOnly(path) && !isReadOnlyRoot(path)) {
                 throw new AccessDeniedException(path.toString());
             }
             SftpFileSystemAccessor.DEFAULT.createDirectory(proxy, path);
@@ -344,14 +340,27 @@ public final class TestSshServer {
         @Override
         public void renameFile(SftpSubsystemProxy proxy, Path source, Path target,
                               Collection<CopyOption> options) throws IOException {
-            if (target.startsWith(readOnly)) {
+            if (isUnderReadOnly(target)) {
                 throw new AccessDeniedException(target.toString());
             }
             SftpFileSystemAccessor.DEFAULT.renameFile(proxy, source, target, options);
         }
 
+        private static boolean isUnderReadOnly(Path path) {
+            return normalize(path).contains(READ_ONLY_PREFIX);
+        }
+
+        private static boolean isReadOnlyRoot(Path path) {
+            return normalize(path).equals(READ_ONLY_PREFIX)
+                    || normalize(path).endsWith(READ_ONLY_PREFIX);
+        }
+
+        private static String normalize(Path path) {
+            return path.toString().replace('\\', '/');
+        }
+
         private static boolean isWrite(Set<? extends OpenOption> options, String mode) {
-            return mode.contains("w") || mode.contains("a")
+            return (mode != null && (mode.contains("w") || mode.contains("a")))
                     || options.contains(StandardOpenOption.WRITE)
                     || options.contains(StandardOpenOption.APPEND)
                     || options.contains(StandardOpenOption.CREATE);
