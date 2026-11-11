@@ -1,0 +1,15 @@
+<idea-plugin>
+    <id>com.cloudtoolkit.ecsdeploy</id>
+    <name>Cloud Toolkit - ECS Deploy</name>
+    <vendor>cloud-toolkit</vendor>
+    <description><![CDATA[
+        Cloud Toolkit ECS Deploy builds a Java artifact in IntelliJ IDEA, uploads it to an ECS instance over SFTP, restarts the service over SSH, and streams the deployment log into the Run tool window. Connection credentials are stored in the IDE PasswordSafe.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+
+    <idea-version since-build="262"/>
+
+    <resource-bundle>messages.EcsDeployBundle</resource-bundle>
+</idea-plugin>
