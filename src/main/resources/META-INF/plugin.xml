@@ -12,4 +12,8 @@
     <idea-version since-build="262"/>
 
     <resource-bundle>messages.EcsDeployBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService"/>
+    </extensions>
 </idea-plugin>

@@ -27,6 +27,7 @@ dependencies {
     intellijPlatform {
         local("D:/Program/JetBrains/idea-2026.2.4.win")
         testFramework(TestFrameworkType.Platform, "262.11879.100")
+        testBundledPlugins("com.intellij.modules.ultimate")
     }
 
     implementation("org.apache.sshd:sshd-core:2.19.0") {
