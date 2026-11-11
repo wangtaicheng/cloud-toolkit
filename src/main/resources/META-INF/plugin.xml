@@ -3,7 +3,7 @@
     <name>Cloud Toolkit - ECS Deploy</name>
     <vendor>cloud-toolkit</vendor>
     <description><![CDATA[
-        Cloud Toolkit ECS Deploy builds a Java artifact in IntelliJ IDEA, uploads it to an ECS instance over SFTP, restarts the service over SSH, and streams the deployment log into the Run tool window. Connection credentials are stored in the IDE PasswordSafe.
+        Cloud Toolkit ECS Deploy builds a Java artifact in IntelliJ IDEA, uploads it to an ECS instance over SFTP, restarts the service over SSH, and streams the deployment log into the Run tool window. All host, credential, tag and command data is stored in <code>~/.cloudidea/cloudtoolkit.db</code> (SQLite), reusing the database's existing tables.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -20,5 +20,8 @@
         <applicationConfigurable instance="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable"
                                  id="cloud-toolkit.ecs.connections"
                                  displayName="Cloud Toolkit - ECS Deploy"/>
+        <toolWindow id="Cloud Toolkit"
+                    anchor="right"
+                    factoryClass="com.cloudtoolkit.ecsdeploy.ui.CloudToolkitToolWindow"/>
     </extensions>
 </idea-plugin>

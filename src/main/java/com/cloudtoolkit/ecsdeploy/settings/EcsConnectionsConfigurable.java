@@ -51,6 +51,7 @@ public final class EcsConnectionsConfigurable implements Configurable {
     private final JTextField nameField = new JTextField();
     private final JTextField hostField = new JTextField();
     private final JTextField portField = new JTextField("22");
+    private final JTextField tagField = new JTextField();
     private final JTextField userField = new JTextField();
     private final JComboBox<EcsConnection.AuthType> authTypeField =
             new JComboBox<>(new DefaultComboBoxModel<>(EcsConnection.AuthType.values()));
@@ -115,6 +116,8 @@ public final class EcsConnectionsConfigurable implements Configurable {
         form.add(hostField);
         form.add(new JLabel("端口"));
         form.add(portField);
+        form.add(new JLabel("标签 (Tag)"));
+        form.add(tagField);
         form.add(new JLabel("用户名"));
         form.add(userField);
         form.add(new JLabel("认证方式"));
@@ -179,6 +182,7 @@ public final class EcsConnectionsConfigurable implements Configurable {
         connection.displayName = nameField.getText().trim();
         connection.host = hostField.getText().trim();
         connection.port = parsePort(portField.getText());
+        connection.tag = tagField.getText().trim();
         connection.username = userField.getText().trim();
         connection.authType = (EcsConnection.AuthType) authTypeField.getSelectedItem();
         connection.privateKeyPath = privateKeyField.getText().trim();
@@ -200,10 +204,7 @@ public final class EcsConnectionsConfigurable implements Configurable {
         if (connection == null) {
             return;
         }
-        CredentialStore.SecretKind kind = connection.authType == EcsConnection.AuthType.PRIVATE_KEY
-                ? CredentialStore.SecretKind.PASSPHRASE
-                : CredentialStore.SecretKind.PASSWORD;
-        String secret = new CredentialStore().getSecret(id, kind);
+        String secret = service().getSecret(id);
         HostKeyPolicy policy = new HostKeyPolicy(skipHostKey.isSelected());
         policy.clearUnknownServerKey();
 
@@ -256,6 +257,7 @@ public final class EcsConnectionsConfigurable implements Configurable {
         nameField.setText(connection.displayName);
         hostField.setText(connection.host);
         portField.setText(String.valueOf(connection.port));
+        tagField.setText(connection.tag == null ? "" : connection.tag);
         userField.setText(connection.username);
         authTypeField.setSelectedItem(connection.authType);
         privateKeyField.setText(connection.privateKeyPath == null ? "" : connection.privateKeyPath);

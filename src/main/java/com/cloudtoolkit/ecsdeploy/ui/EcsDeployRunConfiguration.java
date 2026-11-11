@@ -2,7 +2,6 @@ package com.cloudtoolkit.ecsdeploy.ui;
 
 import com.cloudtoolkit.ecsdeploy.deploy.DeployContext;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.ConfigurationException;
-import com.cloudtoolkit.ecsdeploy.settings.CredentialStore;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.intellij.execution.Executor;
@@ -51,10 +50,7 @@ public final class EcsDeployRunConfiguration extends RunConfigurationBase<EcsDep
         if (connection == null) {
             throw new ConfigurationException(EcsDeployMessages.message("validation.connection.missing"));
         }
-        CredentialStore.SecretKind kind = connection.authType == EcsConnection.AuthType.PRIVATE_KEY
-                ? CredentialStore.SecretKind.PASSPHRASE
-                : CredentialStore.SecretKind.PASSWORD;
-        String secret = new CredentialStore().getSecret(connection.id, kind);
+        String secret = EcsConnectionsService.getInstance().getSecret(connection.id);
         return new DeployContext(connection, secret, Path.of(options.getArtifactPath()),
                 options.getRemoteDirectory(), options.getStopCommand(), options.getStartCommand());
     }

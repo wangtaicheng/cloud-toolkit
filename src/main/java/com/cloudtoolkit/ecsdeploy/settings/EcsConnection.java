@@ -12,4 +12,6 @@ public final class EcsConnection {
     public AuthType authType = AuthType.PASSWORD;
     public String privateKeyPath;
     public boolean hasPassphrase;
+    public String tag;
+    public String remark;
 }

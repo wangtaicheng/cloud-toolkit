@@ -4,11 +4,25 @@ import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.intellij.testFramework.LightPlatformTestCase;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 public class EcsDeploySettingsEditorValidationTest extends LightPlatformTestCase {
 
+    static {
+        if (System.getProperty("cloudtoolkit.db.path") == null) {
+            try {
+                System.setProperty("cloudtoolkit.db.path",
+                        Files.createTempFile("cloudtoolkit-test", ".db").toString());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     private EcsConnectionsService service;
+    private EcsConnection inserted;
 
     @Override
     protected void setUp() throws Exception {
@@ -21,11 +35,14 @@ public class EcsDeploySettingsEditorValidationTest extends LightPlatformTestCase
         connection.username = "test";
         connection.authType = EcsConnection.AuthType.PASSWORD;
         service.upsert(connection, "pw");
+        inserted = connection;
     }
 
     @Override
     protected void tearDown() throws Exception {
-        service.delete("c1");
+        if (inserted != null && inserted.id != null) {
+            service.delete(inserted.id);
+        }
         super.tearDown();
     }
 
@@ -61,9 +78,9 @@ public class EcsDeploySettingsEditorValidationTest extends LightPlatformTestCase
         assertTrue(errors.toString(), errors.isEmpty());
     }
 
-    private static EcsDeployRunConfigurationOptions validOptions() {
+    private EcsDeployRunConfigurationOptions validOptions() {
         EcsDeployRunConfigurationOptions options = new EcsDeployRunConfigurationOptions();
-        options.setConnectionId("c1");
+        options.setConnectionId(inserted.id);
         options.setArtifactPath("/tmp/app.jar");
         options.setRemoteDirectory("/opt/app");
         options.setStopCommand("echo stop");

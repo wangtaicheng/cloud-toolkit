@@ -1,12 +1,22 @@
 package com.cloudtoolkit.ecsdeploy.settings;
 
 import com.cloudtoolkit.ecsdeploy.support.TestSshServer;
-import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.testFramework.LightPlatformTestCase;
-import com.intellij.util.xmlb.XmlSerializer;
-import org.jdom.Element;
+
+import java.nio.file.Files;
 
 public class EcsConnectionsConfigurableTest extends LightPlatformTestCase {
+
+    static {
+        if (System.getProperty("cloudtoolkit.db.path") == null) {
+            try {
+                System.setProperty("cloudtoolkit.db.path",
+                        Files.createTempFile("cloudtoolkit-test", ".db").toString());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
 
     private TestSshServer server;
     private EcsConnectionsService service;
@@ -22,7 +32,6 @@ public class EcsConnectionsConfigurableTest extends LightPlatformTestCase {
 
     @Override
     protected void tearDown() throws Exception {
-        service.delete("c1");
         server.stop();
         super.tearDown();
     }
@@ -37,19 +46,18 @@ public class EcsConnectionsConfigurableTest extends LightPlatformTestCase {
 
     public void testConnectionNeverPerformsRemoteWrites() {
         EcsConnectionsConfigurable.testConnection(conn("pw"), "pw");
-
         assertEquals(0, server.commandCount());
     }
 
-    public void testAddEditDeletePersistsOnlyNonSensitiveFields() {
-        configurable.add(conn("pw"), "pw");
+    public void testAddAndDeletePersistsToDatabase() {
+        EcsConnection c = conn("pw");
+        configurable.add(c, "pw");
 
-        EcsConnectionState state = service.getState();
-        Element xml = XmlSerializer.serialize(state);
-        assertFalse(JDOMUtil.write(xml).contains("pw"));
+        assertNotNull(c.id);
+        assertNotNull(service.findById(c.id));
 
-        configurable.delete("c1");
-        assertTrue(configurable.list().isEmpty());
+        configurable.delete(c.id);
+        assertNull(service.findById(c.id));
     }
 
     private EcsConnection conn(String password) {
