@@ -167,6 +167,12 @@ public final class CloudToolkitToolWindow implements ToolWindowFactory {
         actionColumn.setCellEditor(new HostActionCellEditor(project, this::loadTableData));
         actionColumn.setMinWidth(360);
         actionColumn.setMaxWidth(460);
+
+        // Keep the username column narrow so the address/tag/description stay readable.
+        TableColumn userColumn = hostTable.getColumn("Username");
+        userColumn.setMinWidth(50);
+        userColumn.setMaxWidth(110);
+        userColumn.setPreferredWidth(80);
     }
 
     /** Renders the per-row action buttons. */

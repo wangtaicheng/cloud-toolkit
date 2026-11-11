@@ -6,8 +6,8 @@ import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
+import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTerminalOpener;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTtyConnector;
-import com.cloudtoolkit.ecsdeploy.ui.terminal.TerminalDialog;
 import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -244,15 +244,16 @@ public final class HostActionPanel extends JPanel {
             return;
         }
         String secret = EcsConnectionsService.getInstance().getSecret(hostId);
-        String title = c.host + ":" + c.port;
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "打开终端 " + title) {
+        String address = c.host + ":" + c.port;
+        String tabTitle = c.host;
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "打开终端 " + address) {
             private SshTtyConnector connector;
             private String error;
 
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
-                    connector = new SshTtyConnector(c, secret, title, initialCommand);
+                    connector = new SshTtyConnector(c, secret, address, initialCommand);
                 } catch (Exception ex) {
                     error = ex.getMessage();
                 }
@@ -261,9 +262,9 @@ public final class HostActionPanel extends JPanel {
             @Override
             public void onFinished() {
                 if (connector != null) {
-                    new TerminalDialog(project, connector).show();
+                    SshTerminalOpener.open(project, connector, tabTitle);
                 } else {
-                    Messages.showErrorDialog("无法连接 " + title + ": " + error, "终端");
+                    Messages.showErrorDialog("无法连接 " + address + ": " + error, "终端");
                 }
             }
         });
