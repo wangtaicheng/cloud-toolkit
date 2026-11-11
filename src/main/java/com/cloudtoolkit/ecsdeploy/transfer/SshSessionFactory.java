@@ -3,16 +3,19 @@ package com.cloudtoolkit.ecsdeploy.transfer;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshAuthenticationException;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshConnectException;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
+import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.cloudtoolkit.ecsdeploy.util.PathUtils;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.future.AuthFuture;
 import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.common.NamedResource;
 import org.apache.sshd.common.config.keys.FilePasswordProvider;
+import org.apache.sshd.common.util.net.SshdSocketAddress;
 import org.apache.sshd.common.util.security.SecurityUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
@@ -28,6 +31,8 @@ public final class SshSessionFactory implements AutoCloseable {
 
     private final HostKeyPolicy hostKeyPolicy;
     private final SshClient client;
+    /** Jump-host sessions opened while tunneling; closed together with the factory. */
+    private final java.util.List<ClientSession> openedProxies = new java.util.ArrayList<>();
 
     public SshSessionFactory() {
         this(new HostKeyPolicy());
@@ -46,17 +51,51 @@ public final class SshSessionFactory implements AutoCloseable {
 
     public ClientSession open(EcsConnection connection, String secret)
             throws IOException, SshConnectException, SshAuthenticationException {
+        return open(connection, secret, 0);
+    }
+
+    private ClientSession open(EcsConnection connection, String secret, int depth)
+            throws IOException, SshConnectException, SshAuthenticationException {
         if (connection == null) {
             throw new SshAuthenticationException("连接不存在，请重新选择");
+        }
+        if (depth > 5) {
+            throw new SshConnectException("跳板机层级过深，已停止连接");
+        }
+
+        // Open the jump-host session first if this host is configured behind a proxy.
+        ClientSession proxySession = null;
+        if (connection.proxyId > 0) {
+            EcsConnection proxy = EcsConnectionsService.getInstance()
+                    .findById(String.valueOf(connection.proxyId));
+            if (proxy == null) {
+                throw new SshConnectException("跳板机不存在 (id=" + connection.proxyId + ")");
+            }
+            String proxySecret = EcsConnectionsService.getInstance()
+                    .getSecret(String.valueOf(connection.proxyId));
+            proxySession = open(proxy, proxySecret, depth + 1);
         }
 
         ClientSession session;
         try {
-            session = client.connect(connection.username, connection.host, connection.port)
-                    .verify(CONNECT_TIMEOUT)
-                    .getSession();
+            if (proxySession != null) {
+                // Tunnel to the real host through the jump host's local port forward.
+                SshdSocketAddress local = new SshdSocketAddress("127.0.0.1", 0);
+                SshdSocketAddress remote = new SshdSocketAddress(connection.host, connection.port);
+                SshdSocketAddress bound = proxySession.startLocalPortForwarding(local, remote);
+                session = client.connect(connection.username, bound.getHostName(), bound.getPort())
+                        .verify(CONNECT_TIMEOUT)
+                        .getSession();
+            } else {
+                session = client.connect(connection.username, connection.host, connection.port)
+                        .verify(CONNECT_TIMEOUT)
+                        .getSession();
+            }
         } catch (IOException | RuntimeException e) {
-            throw new SshConnectException("无法连接 " + connection.host + ":" + connection.port, e);
+            closeQuietly(proxySession);
+            throw new SshConnectException(
+                    "无法连接 " + connection.host + ":" + connection.port
+                            + (proxySession != null ? " (经跳板机)" : ""), e);
         }
 
         try {
@@ -73,12 +112,17 @@ public final class SshSessionFactory implements AutoCloseable {
             if (!session.isAuthenticated()) {
                 throw new SshAuthenticationException("SSH 认证失败");
             }
+            if (proxySession != null) {
+                openedProxies.add(proxySession);
+            }
             return session;
         } catch (SshAuthenticationException e) {
             closeQuietly(session);
+            closeQuietly(proxySession);
             throw e;
         } catch (IOException | RuntimeException e) {
             closeQuietly(session);
+            closeQuietly(proxySession);
             throw new SshAuthenticationException("SSH 认证失败", e);
         }
     }
@@ -124,6 +168,10 @@ public final class SshSessionFactory implements AutoCloseable {
 
     @Override
     public void close() {
+        for (ClientSession proxy : openedProxies) {
+            closeQuietly(proxy);
+        }
+        openedProxies.clear();
         client.stop();
     }
 }

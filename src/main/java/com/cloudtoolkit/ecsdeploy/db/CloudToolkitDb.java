@@ -385,6 +385,32 @@ public final class CloudToolkitDb {
         }
     }
 
+    /** Update an existing command's content (digest recomputed). */
+    public synchronized void updateCommand(int id, String content) {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        String sql = "UPDATE commands SET content = ?, digest = ? WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, content);
+            ps.setString(2, digest(content));
+            ps.setInt(3, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("更新 command 失败", e);
+        }
+    }
+
+    public synchronized void deleteCommand(int id) {
+        String sql = "DELETE FROM commands WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("删除 command 失败", e);
+        }
+    }
+
     // ------------------------------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------------------------------

@@ -14,4 +14,6 @@ public final class EcsConnection {
     public boolean hasPassphrase;
     public String tag;
     public String remark;
+    /** Jump-host (SSH proxy) host id, 0 = connect directly. */
+    public int proxyId;
 }

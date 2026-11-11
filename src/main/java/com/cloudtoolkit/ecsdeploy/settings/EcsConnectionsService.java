@@ -134,6 +134,31 @@ public final class EcsConnectionsService {
         return names;
     }
 
+    /** All stored SSH profiles (for the "use existing profile" mode). */
+    public List<CloudToolkitDb.ProfileRow> listProfiles() {
+        return db.listProfiles();
+    }
+
+    /**
+     * Insert or update a host that reuses an existing {@code profileId} (instead of creating a new
+     * profile) and optionally points at a jump host ({@code proxyHostId}, 0 = none). Passing a
+     * {@code hostId} &gt; 0 updates that row, otherwise a new host is inserted.
+     */
+    public String upsertHostWithProfile(int hostId, String address, int port, String tag,
+                                        String remark, int profileId, int proxyHostId) {
+        int tagId = (tag == null || tag.isBlank()) ? 0 : db.findOrCreateTag(tag);
+        CloudToolkitDb.HostRow host = new CloudToolkitDb.HostRow();
+        host.id = Math.max(hostId, 0);
+        host.address = address;
+        host.port = port;
+        host.profileId = profileId;
+        host.tagId = tagId;
+        host.proxyId = Math.max(proxyHostId, 0);
+        host.remark = remark;
+        int id = db.upsertHost(host);
+        return String.valueOf(id);
+    }
+
     private @Nullable EcsConnection toConnection(@Nullable CloudToolkitDb.HostRow host) {
         if (host == null) {
             return null;
@@ -144,6 +169,7 @@ public final class EcsConnectionsService {
         connection.host = host.address;
         connection.port = host.port;
         connection.remark = host.remark;
+        connection.proxyId = host.proxyId;
         connection.tag = host.tagId > 0 ? tagName(host.tagId) : null;
         if (profile != null) {
             connection.displayName = profile.name;
