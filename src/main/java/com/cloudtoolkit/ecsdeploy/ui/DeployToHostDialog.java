@@ -75,6 +75,7 @@ public final class DeployToHostDialog extends DialogWrapper {
         for (CloudToolkitDb.CommandRow cmd : CloudToolkitDb.getInstance().listCommands()) {
             commandCombo.addItem(cmd.content);
         }
+        commandCombo.addItem(""); // 允许选择空命令
         commandCombo.setEditable(true);
 
         if (preselected != null && preselected.tag != null) {
@@ -142,10 +143,6 @@ public final class DeployToHostDialog extends DialogWrapper {
         String dir = targetDirField.getText().trim();
         if (dir.isEmpty() || !dir.startsWith("/")) {
             return new ValidationInfo("远端目录必须是绝对路径", targetDirField);
-        }
-        String cmd = commandText();
-        if (cmd.isEmpty()) {
-            return new ValidationInfo("启动命令不能为空", commandCombo);
         }
         return null;
     }

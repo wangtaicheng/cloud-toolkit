@@ -10,6 +10,9 @@ import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTerminalOpener;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTtyConnector;
 import com.intellij.openapi.application.ApplicationManager;
+import org.apache.sshd.client.session.ClientSession;
+import org.apache.sshd.sftp.client.SftpClientFactory;
+import org.apache.sshd.sftp.client.fs.SftpFileSystem;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -156,22 +159,33 @@ public final class HostActionPanel extends JPanel {
             return;
         }
         ProgressManager.getInstance().run(new Task.Backgroundable(project, "连接 " + c.host) {
-            private SftpBrowserDialog dialog;
+            private SshSessionFactory factory;
+            private ClientSession session;
+            private SftpFileSystem fs;
             private String error;
 
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
-                    dialog = new SftpBrowserDialog(project, c);
+                    factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST);
+                    String secret = EcsConnectionsService.getInstance().getSecret(c.id);
+                    session = factory.open(c, secret);
+                    fs = SftpClientFactory.instance().createSftpFileSystem(session);
                 } catch (Exception ex) {
+                    if (factory != null) {
+                        factory.close();
+                    }
                     error = ex.getMessage();
                 }
             }
 
             @Override
             public void onFinished() {
-                if (dialog != null) {
-                    dialog.show();
+                if (fs != null) {
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        SftpBrowserDialog dialog = new SftpBrowserDialog(project, c, factory, session, fs);
+                        dialog.show();
+                    });
                 } else {
                     Messages.showErrorDialog("无法打开远端文件浏览: " + error, "远端文件");
                 }
