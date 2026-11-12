@@ -133,14 +133,60 @@ public final class HostKeyPolicy {
         if (check(knownHosts, hosts, port, key) != Decision.UNKNOWN) {
             return;
         }
-        String line = hostToken(hosts, port) + " " + keyType(key) + " " + encode(key)
-                + System.lineSeparator();
+        append(knownHosts, hostToken(hosts, port) + " " + keyType(key) + " " + encode(key));
+    }
+
+    /** Replaces the key of a host: the conflicting entries are removed, then the new key is added. */
+    public static void replace(Path knownHosts, String host, int port, PublicKey key) {
+        replace(knownHosts, List.of(host), port, key);
+    }
+
+    /** Replaces the key of a host: the conflicting entries are removed, then the new key is added. */
+    public static void replace(Path knownHosts, Collection<String> hosts, int port, PublicKey key) {
+        Set<String> markers = markers(hosts, port);
+        List<String> kept = new ArrayList<>();
+        if (Files.isRegularFile(knownHosts)) {
+            try {
+                for (String line : Files.readAllLines(knownHosts, StandardCharsets.UTF_8)) {
+                    if (isConflicting(line, markers)) {
+                        continue;
+                    }
+                    kept.add(line);
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException("Cannot read known hosts", e);
+            }
+        }
+        kept.add(hostToken(hosts, port) + " " + keyType(key) + " " + encode(key));
         try {
             Path parent = knownHosts.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(knownHosts, line, StandardCharsets.UTF_8,
+            Files.write(knownHosts, kept, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Cannot update known hosts", e);
+        }
+    }
+
+    /** Whether a line describes one of the hosts (a conflicting entry to be replaced). */
+    private static boolean isConflicting(String line, Set<String> markers) {
+        String trimmed = line.trim();
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+            return false;
+        }
+        String[] parts = trimmed.split("\\s+");
+        return parts.length >= 1 && matches(parts[0], markers);
+    }
+
+    private static void append(Path knownHosts, String entry) {
+        try {
+            Path parent = knownHosts.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(knownHosts, entry + System.lineSeparator(), StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             throw new UncheckedIOException("Cannot update known hosts", e);
@@ -205,7 +251,8 @@ public final class HostKeyPolicy {
             List<String> names = names(socket);
             Decision decision = evaluate(knownHosts, names, socket.getPort(), key);
             lastDecision = decision;
-            if (decision == Decision.UNKNOWN) {
+            if (decision != Decision.ACCEPT) {
+                // Both an unknown and a changed key are recorded so the user may trust / replace it.
                 unknownServerKey = key;
                 unknownServerHost = socket.getHostString();
                 unknownServerAddress = addressOf(socket);

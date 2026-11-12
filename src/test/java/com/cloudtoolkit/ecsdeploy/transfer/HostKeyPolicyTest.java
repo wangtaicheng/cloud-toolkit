@@ -118,6 +118,29 @@ class HostKeyPolicyTest {
         assertEquals(content, Files.readString(knownHosts));
     }
 
+    @Test
+    void replaceRemovesTheConflictingEntry() throws Exception {
+        HostKeyPolicy.write(knownHosts, "127.0.0.1", PORT, keyPair.getPublic());
+
+        HostKeyPolicy.replace(knownHosts, "127.0.0.1", PORT, otherKeyPair.getPublic());
+
+        assertEquals(HostKeyPolicy.Decision.ACCEPT,
+                HostKeyPolicy.check(knownHosts, "127.0.0.1", PORT, otherKeyPair.getPublic()));
+        assertEquals(HostKeyPolicy.Decision.CHANGED,
+                HostKeyPolicy.check(knownHosts, "127.0.0.1", PORT, keyPair.getPublic()));
+    }
+
+    @Test
+    void replaceKeepsUnrelatedEntries() throws Exception {
+        HostKeyPolicy.write(knownHosts, "10.0.0.9", PORT, keyPair.getPublic());
+
+        HostKeyPolicy.replace(knownHosts, "127.0.0.1", PORT, otherKeyPair.getPublic());
+
+        assertEquals(HostKeyPolicy.Decision.ACCEPT,
+                HostKeyPolicy.check(knownHosts, "10.0.0.9", PORT, keyPair.getPublic()));
+        assertTrue(Files.readString(knownHosts).contains("10.0.0.9"));
+    }
+
     private static String encode(java.security.PublicKey key) {
         return Base64.getEncoder().encodeToString(key.getEncoded());
     }

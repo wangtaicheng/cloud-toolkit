@@ -144,4 +144,46 @@ class SshSessionFactoryTest {
         }
         assertFalse(Files.exists(knownHosts));
     }
+
+    @Test
+    void replacesAChangedHostKeyAfterTheUserConfirmedIt() throws Exception {
+        Path knownHosts = tempDir.resolve("known_hosts");
+        // A stale, wrong key for the server.
+        HostKeyPolicy.write(knownHosts, "127.0.0.1", server.port(), wrongKey());
+
+        try (SshSessionFactory replacing = new SshSessionFactory(new HostKeyPolicy(false, knownHosts),
+                tempDir.resolve("ssh_config"), (host, port, fingerprint) -> true);
+             ClientSession session = replacing.open(conn(AuthType.PASSWORD), "pw")) {
+            assertTrue(session.isAuthenticated());
+        }
+        // The wrong key was replaced: a connection without any confirmation succeeds now.
+        try (SshSessionFactory verifying = new SshSessionFactory(new HostKeyPolicy(false, knownHosts),
+                tempDir.resolve("ssh_config"));
+             ClientSession session = verifying.open(conn(AuthType.PASSWORD), "pw")) {
+            assertTrue(session.isAuthenticated());
+        }
+    }
+
+    @Test
+    void refusesAChangedHostKeyTheUserDidNotConfirm() {
+        Path knownHosts = tempDir.resolve("known_hosts");
+        HostKeyPolicy.write(knownHosts, "127.0.0.1", server.port(), wrongKey());
+
+        try (SshSessionFactory refusing = new SshSessionFactory(new HostKeyPolicy(false, knownHosts),
+                tempDir.resolve("ssh_config"), (host, port, fingerprint) -> false)) {
+            DeployException failure = assertThrows(DeployException.class,
+                    () -> refusing.open(conn(AuthType.PASSWORD), "pw"));
+            assertTrue(failure.getMessage().contains("主机密钥"));
+        }
+    }
+
+    private java.security.PublicKey wrongKey() {
+        try {
+            java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("RSA");
+            generator.initialize(1024);
+            return generator.generateKeyPair().getPublic();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 }

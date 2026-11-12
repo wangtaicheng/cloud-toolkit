@@ -131,7 +131,7 @@ public final class SshSessionFactory implements AutoCloseable {
         try {
             return connect(target, secret, proxySession);
         } catch (SshConnectException | SshAuthenticationException e) {
-            if (allowHostKeyTrust && trustUnknownHostKey(target)) {
+            if (allowHostKeyTrust && trustHostKey(target)) {
                 // The key is trusted now: connect again, the known hosts file contains it.
                 return open(connection, secret, depth, useConfigJump, false);
             }
@@ -180,7 +180,7 @@ public final class SshSessionFactory implements AutoCloseable {
         try {
             return connect(target, secret, proxySession);
         } catch (SshConnectException | SshAuthenticationException e) {
-            if (allowHostKeyTrust && trustUnknownHostKey(target)) {
+            if (allowHostKeyTrust && trustHostKey(target)) {
                 // The key is trusted now: connect again, the known hosts file contains it.
                 return openTarget(target, secret, depth, false);
             }
@@ -276,26 +276,31 @@ public final class SshSessionFactory implements AutoCloseable {
     }
 
     /**
-     * Asks the user whether the key of an unknown host may be trusted and writes it to the known
-     * hosts file, so that the next connection is verified against it.
+     * Asks the user whether the key of a host may be trusted. An unknown key is added, a changed key
+     * (possible man-in-the-middle) replaces the old entry - both only after an explicit warning.
      *
      * @return {@code true} when the key was accepted (the connection may be retried)
      */
-    private boolean trustUnknownHostKey(SshConfigResolver.Target target) {
-        if (hostKeyTrust == null || hostKeyPolicy.lastDecision() != HostKeyPolicy.Decision.UNKNOWN) {
+    private boolean trustHostKey(SshConfigResolver.Target target) {
+        if (hostKeyTrust == null) {
             return false;
         }
+        HostKeyPolicy.Decision decision = hostKeyPolicy.lastDecision();
         PublicKey key = hostKeyPolicy.unknownServerKey();
         String host = hostKeyPolicy.unknownServerHost();
         if (key == null || host == null) {
             return false;
         }
         if (!host.equalsIgnoreCase(target.host())) {
-            // The unknown key belongs to another host (a jump host for example).
+            // The key belongs to another host (a jump host for example).
             return false;
         }
         int port = target.port();
-        if (!hostKeyTrust.confirmTrust(target.host(), port, HostKeyPolicy.fingerprint(key))) {
+        String fingerprint = HostKeyPolicy.fingerprint(key);
+        boolean accepted = decision == HostKeyPolicy.Decision.CHANGED
+                ? hostKeyTrust.confirmReplacement(target.host(), port, fingerprint)
+                : hostKeyTrust.confirmTrust(target.host(), port, fingerprint);
+        if (!accepted) {
             return false;
         }
         List<String> names = new ArrayList<>();
@@ -304,7 +309,11 @@ public final class SshSessionFactory implements AutoCloseable {
         if (address != null && !address.equalsIgnoreCase(target.host())) {
             names.add(address);
         }
-        HostKeyPolicy.write(hostKeyPolicy.knownHosts(), names, port, key);
+        if (decision == HostKeyPolicy.Decision.CHANGED) {
+            HostKeyPolicy.replace(hostKeyPolicy.knownHosts(), names, port, key);
+        } else {
+            HostKeyPolicy.write(hostKeyPolicy.knownHosts(), names, port, key);
+        }
         return true;
     }
 

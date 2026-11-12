@@ -22,12 +22,23 @@ public final class HostKeyPrompts {
     }
 
     /** The prompt used by every entry point of the plugin. */
-    public static final HostKeyTrust TRUST = HostKeyPrompts::confirm;
+    public static final HostKeyTrust TRUST = HostKeyPrompts::confirmTrust;
 
     /** Shows the confirmation dialog and waits for the answer. */
-    public static boolean confirm(String host, int port, String fingerprint) {
+    public static boolean confirmTrust(String host, int port, String fingerprint) {
         String text = MessageFormat.format(message("dialog.host.key.confirm"),
                 host + ":" + port, fingerprint);
+        return askOnEdt(text);
+    }
+
+    /** Shows the replacement dialog (a changed key) and waits for the answer. */
+    public static boolean confirmReplacement(String host, int port, String fingerprint) {
+        String text = MessageFormat.format(message("dialog.host.key.replace"),
+                host + ":" + port, fingerprint);
+        return askOnEdt(text);
+    }
+
+    private static boolean askOnEdt(String text) {
         if (ApplicationManager.getApplication().isDispatchThread()) {
             return ask(text);
         }

@@ -16,4 +16,13 @@ public interface HostKeyTrust {
      * @return {@code true} when the key may be trusted and written to the known hosts file
      */
     boolean confirmTrust(String host, int port, String fingerprint);
+
+    /**
+     * Confirms replacing a changed key (possible man-in-the-middle attack).
+     *
+     * @return {@code true} when the old entry may be removed and the new key trusted
+     */
+    default boolean confirmReplacement(String host, int port, String fingerprint) {
+        return confirmTrust(host, port, fingerprint);
+    }
 }

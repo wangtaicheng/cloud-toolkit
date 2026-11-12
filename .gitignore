@@ -6,3 +6,4 @@ out/
 .intellijPlatform/
 .superpowers/
 local.properties
+.fastRequest
