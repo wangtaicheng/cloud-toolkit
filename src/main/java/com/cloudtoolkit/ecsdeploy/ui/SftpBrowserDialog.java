@@ -1,12 +1,13 @@
 package com.cloudtoolkit.ecsdeploy.ui;
 
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
-import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -15,15 +16,11 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBTextField;
 import org.apache.sshd.client.session.ClientSession;
-import org.apache.sshd.sftp.client.SftpClientFactory;
 import org.apache.sshd.sftp.client.fs.SftpFileSystem;
+import org.jetbrains.annotations.NotNull;
 
-import javax.swing.DefaultListModel;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JPanel;
-import java.awt.BorderLayout;
-import java.awt.Dimension;
+import javax.swing.*;
+import java.awt.*;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,18 +48,18 @@ public final class SftpBrowserDialog extends DialogWrapper {
     private final JBLabel statusLabel = new JBLabel("");
     private final List<String> dirNames = new ArrayList<>();
 
-    public SftpBrowserDialog(Project project, EcsConnection target) throws Exception {
+    /**
+     * @param factory 已建立的会话工厂（调用方负责在后台线程创建并负责最终关闭）
+     * @param session 已建立且已认证的 SSH 会话
+     * @param fs      已创建的 SFTP 文件系统
+     */
+    public SftpBrowserDialog(Project project, EcsConnection target,
+                             SshSessionFactory factory, ClientSession session, SftpFileSystem fs) {
         super(project, true);
         this.project = project;
-        this.factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST);
-        try {
-            String secret = EcsConnectionsService.getInstance().getSecret(target.id);
-            this.session = factory.open(target, secret);
-            this.fs = SftpClientFactory.instance().createSftpFileSystem(session);
-        } catch (Exception e) {
-            factory.close();
-            throw e;
-        }
+        this.factory = factory;
+        this.session = session;
+        this.fs = fs;
         setTitle("远端文件 - " + target.host);
         pathField.setText("/root");
 
@@ -80,45 +77,63 @@ public final class SftpBrowserDialog extends DialogWrapper {
     }
 
     private void refresh() {
-        String path = pathField.getText().trim();
-        if (path.isEmpty() || !path.startsWith("/")) {
+        String raw = pathField.getText().trim();
+        String path;
+        if (raw.isEmpty() || !raw.startsWith("/")) {
             path = "/";
             pathField.setText(path);
+        } else {
+            path = raw;
         }
-        listModel.clear();
-        dirNames.clear();
-        if (!"/".equals(path)) {
-            listModel.addElement(ARROW_UP);
-            dirNames.add(ARROW_UP);
-        }
-        List<String> dirs = new ArrayList<>();
-        List<String> files = new ArrayList<>();
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(fs.getPath(path))) {
-            for (Path p : stream) {
-                String name = p.getFileName() == null ? "" : p.getFileName().toString();
-                if (Files.isDirectory(p)) {
-                    dirs.add(name + "/");
-                } else {
-                    files.add(name);
+        statusLabel.setText("读取目录: " + path + " ...");
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "读取 " + path) {
+            private final List<String> dirs = new ArrayList<>();
+            private final List<String> files = new ArrayList<>();
+            private String err;
+
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(fs.getPath(path))) {
+                    for (Path p : stream) {
+                        String name = p.getFileName() == null ? "" : p.getFileName().toString();
+                        if (Files.isDirectory(p)) {
+                            dirs.add(name + "/");
+                        } else {
+                            files.add(name);
+                        }
+                    }
+                } catch (Exception e) {
+                    err = e.getMessage();
                 }
             }
-        } catch (Exception e) {
-            statusLabel.setText("读取目录失败: " + e.getMessage());
-            fileList.setModel(listModel);
-            return;
-        }
-        dirs.sort(Comparator.naturalOrder());
-        files.sort(Comparator.naturalOrder());
-        for (String d : dirs) {
-            listModel.addElement(d);
-            dirNames.add(d);
-        }
-        for (String f : files) {
-            listModel.addElement(f);
-            dirNames.add(f);
-        }
-        statusLabel.setText("目录: " + path + "  (" + (dirs.size() + files.size()) + " 项)");
-        fileList.setModel(listModel);
+
+            @Override
+            public void onFinished() {
+                listModel.clear();
+                dirNames.clear();
+                if (!"/".equals(path)) {
+                    listModel.addElement(ARROW_UP);
+                    dirNames.add(ARROW_UP);
+                }
+                if (err != null) {
+                    statusLabel.setText("读取目录失败: " + err);
+                    fileList.setModel(listModel);
+                    return;
+                }
+                dirs.sort(Comparator.naturalOrder());
+                files.sort(Comparator.naturalOrder());
+                for (String d : dirs) {
+                    listModel.addElement(d);
+                    dirNames.add(d);
+                }
+                for (String f : files) {
+                    listModel.addElement(f);
+                    dirNames.add(f);
+                }
+                statusLabel.setText("目录: " + path + "  (" + (dirs.size() + files.size()) + " 项)");
+                fileList.setModel(listModel);
+            }
+        });
     }
 
     private void goUp() {
@@ -151,21 +166,39 @@ public final class SftpBrowserDialog extends DialogWrapper {
     }
 
     private void openRemoteFile(String remotePath) {
-        try {
-            String name = remotePath.substring(remotePath.lastIndexOf('/') + 1);
-            Path temp = Files.createTempFile("cloudtoolkit-", "-" + name);
-            Files.copy(fs.getPath(remotePath), temp, StandardCopyOption.REPLACE_EXISTING);
-            VirtualFile vf = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(temp.toFile());
-            if (vf == null) {
-                statusLabel.setText("无法打开下载的临时文件");
-                return;
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "下载 " + remotePath) {
+            private Path temp;
+            private String err;
+
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                try {
+                    String name = remotePath.substring(remotePath.lastIndexOf('/') + 1);
+                    temp = Files.createTempFile("cloudtoolkit-", "-" + name);
+                    Files.copy(fs.getPath(remotePath), temp, StandardCopyOption.REPLACE_EXISTING);
+                } catch (Exception e) {
+                    err = e.getMessage();
+                }
             }
-            ApplicationManager.getApplication().invokeLater(() ->
-                    FileEditorManager.getInstance(project).openFile(vf, true));
-            statusLabel.setText("已打开: " + remotePath);
-        } catch (Exception e) {
-            statusLabel.setText("打开失败: " + e.getMessage());
-        }
+
+            @Override
+            public void onFinished() {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    if (temp == null) {
+                        statusLabel.setText("下载失败: " + err);
+                        return;
+                    }
+                    VirtualFile vf = ReadAction.compute(() ->
+                            LocalFileSystem.getInstance().refreshAndFindFileByIoFile(temp.toFile()));
+                    if (vf == null) {
+                        statusLabel.setText("无法打开下载的临时文件");
+                        return;
+                    }
+                    FileEditorManager.getInstance(project).openFile(vf, true);
+                    statusLabel.setText("已打开: " + remotePath);
+                });
+            }
+        });
     }
 
     @Override
