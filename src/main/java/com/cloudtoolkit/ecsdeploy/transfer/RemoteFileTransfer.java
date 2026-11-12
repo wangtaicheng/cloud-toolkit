@@ -2,6 +2,7 @@ package com.cloudtoolkit.ecsdeploy.transfer;
 
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SftpTransferException;
 import com.cloudtoolkit.ecsdeploy.util.PathUtils;
+import com.intellij.openapi.diagnostic.Logger;
 import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.sftp.client.SftpClient;
 import org.apache.sshd.sftp.client.SftpClientFactory;
@@ -14,6 +15,7 @@ import java.util.function.Consumer;
 
 public final class RemoteFileTransfer {
 
+    private static final Logger LOG = Logger.getInstance(RemoteFileTransfer.class);
     private static final int BUFFER_SIZE = 32 * 1024;
 
     public void upload(ClientSession session, Path local, String remoteDir,
@@ -26,6 +28,8 @@ public final class RemoteFileTransfer {
         long total = Files.size(local);
 
         try (SftpClient client = SftpClientFactory.instance().createSftpClient(session)) {
+            LOG.info("SFTP 协商协议版本: " + client.getVersion()
+                    + " (v3 不支持 CopyMode.Overwrite，已改用删除后重命名)");
             boolean renamed = false;
             try {
                 mkdirs(client, directory);
