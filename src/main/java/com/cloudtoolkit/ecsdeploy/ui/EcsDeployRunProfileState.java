@@ -30,6 +30,7 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -132,15 +133,25 @@ public final class EcsDeployRunProfileState implements RunProfileState {
     private static Path resolveArtifact(Project project, EcsDeployRunConfigurationOptions options,
                                          DeployConsole console) throws DeployException {
         String buildType = options.getBuildType();
+        String explicit = options.getArtifactPath().trim();
+
         if (EcsDeployRunConfigurationOptions.BUILD_MAVEN.equals(buildType)
                 || EcsDeployRunConfigurationOptions.BUILD_GRADLE.equals(buildType)) {
+            // A hand-picked artifact overrides the automatic build + detection.
+            if (!explicit.isEmpty()) {
+                Path path = Path.of(explicit);
+                if (!Files.isRegularFile(path)) {
+                    throw new ConfigurationException("指定的构建产物不存在: " + explicit);
+                }
+                console.onOutput(false, "使用指定构建产物: " + path);
+                return path;
+            }
             return LocalBuilder.build(project, buildType, console);
         }
-        String artifact = options.getArtifactPath().trim();
-        if (artifact.isEmpty()) {
+        if (explicit.isEmpty()) {
             throw new ConfigurationException(EcsDeployMessages.message("validation.artifact"));
         }
-        return Path.of(artifact);
+        return Path.of(explicit);
     }
 
     /** Opens a terminal tab for every target host when the configuration asks for it. */

@@ -7,23 +7,20 @@ import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
-import com.intellij.ui.SearchTextField;
-import com.intellij.ui.table.JBTable;
-import com.intellij.util.ui.JBUI;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
+import com.intellij.ui.SearchTextField;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
+import com.intellij.ui.table.JBTable;
+import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
-import javax.swing.JButton;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
+import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumn;
-import java.awt.BorderLayout;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
+import java.awt.*;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -153,6 +150,9 @@ public final class CloudToolkitToolWindow implements ToolWindowFactory {
         }
 
         DefaultTableModel model = new DefaultTableModel(data, COLUMNS) {
+            @Serial
+            private static final long serialVersionUID = 366492898075680819L;
+
             @Override
             public boolean isCellEditable(int row, int column) {
                 return column == 5;
@@ -175,7 +175,9 @@ public final class CloudToolkitToolWindow implements ToolWindowFactory {
         userColumn.setPreferredWidth(80);
     }
 
-    /** Renders the per-row action buttons. */
+    /**
+     * Renders the per-row action buttons.
+     */
     private static final class HostActionCellRenderer
             extends javax.swing.table.DefaultTableCellRenderer {
         private final Project project;
@@ -188,7 +190,7 @@ public final class CloudToolkitToolWindow implements ToolWindowFactory {
 
         @Override
         public java.awt.Component getTableCellRendererComponent(javax.swing.JTable table, Object value,
-                                                               boolean isSelected, boolean hasFocus, int row, int column) {
+                                                                boolean isSelected, boolean hasFocus, int row, int column) {
             java.awt.Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             String id = Objects.toString(value);
             HostActionPanel panel = new HostActionPanel(id, project, onChange);
@@ -198,9 +200,13 @@ public final class CloudToolkitToolWindow implements ToolWindowFactory {
         }
     }
 
-    /** Editor that makes the per-row action buttons clickable. */
+    /**
+     * Editor that makes the per-row action buttons clickable.
+     */
     private static final class HostActionCellEditor extends javax.swing.AbstractCellEditor
             implements javax.swing.table.TableCellEditor {
+        @Serial
+        private static final long serialVersionUID = -3580918911493611467L;
         private final Project project;
         private final Runnable onChange;
         private HostActionPanel panel;
@@ -212,9 +218,12 @@ public final class CloudToolkitToolWindow implements ToolWindowFactory {
 
         @Override
         public java.awt.Component getTableCellEditorComponent(javax.swing.JTable table, Object value,
-                                                             boolean isSelected, int row, int column) {
+                                                              boolean isSelected, int row, int column) {
             String id = Objects.toString(value);
             panel = new HostActionPanel(id, project, onChange);
+            // 钳制编辑器尺寸为单元格矩形，避免 Swing 按编辑器 preferredSize 把整行按钮撑大
+            java.awt.Rectangle cellRect = table.getCellRect(row, column, false);
+            panel.setPreferredSize(new java.awt.Dimension(cellRect.width, cellRect.height));
             return panel;
         }
 

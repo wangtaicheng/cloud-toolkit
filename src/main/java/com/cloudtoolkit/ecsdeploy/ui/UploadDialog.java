@@ -9,7 +9,6 @@ import com.cloudtoolkit.ecsdeploy.transfer.RemoteFileTransfer;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
@@ -50,9 +49,7 @@ public final class UploadDialog extends DialogWrapper {
         this.project = project;
         this.target = target;
         setTitle("上传 - " + target.host);
-        localFileField.addBrowseFolderListener(project,
-                new FileChooserDescriptor(true, false, false, false, false, false)
-                        .withTitle("选择要上传的文件"));
+        ArtifactFileChooser.attach(project, localFileField);
         init();
         getOKAction().putValue(Action.NAME, "上传");
         getCancelAction().putValue(Action.NAME, "取消");

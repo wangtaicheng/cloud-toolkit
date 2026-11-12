@@ -19,7 +19,15 @@
         <notificationGroup id="cloud-toolkit.ecs.deploy" displayType="BALLOON" key="notification.group"/>
         <applicationConfigurable instance="com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable"
                                  id="cloud-toolkit.ecs.connections"
-                                 displayName="Cloud Toolkit - ECS Deploy"/>
+                                 displayName="Cloud Toolkit"/>
+        <applicationConfigurable instance="com.cloudtoolkit.ecsdeploy.settings.TagsConfigurable"
+                                 id="cloud-toolkit.ecs.tags"
+                                 parentId="cloud-toolkit.ecs.connections"
+                                 displayName="标签 Tags"/>
+        <applicationConfigurable instance="com.cloudtoolkit.ecsdeploy.settings.ProfileConfigurable"
+                                 id="cloud-toolkit.ecs.profile"
+                                 parentId="cloud-toolkit.ecs.connections"
+                                 displayName="Profile 配置"/>
         <toolWindow id="Cloud Toolkit View"
                     anchor="bottom"
                     factoryClass="com.cloudtoolkit.ecsdeploy.ui.CloudToolkitToolWindow" canCloseContents="true"/>

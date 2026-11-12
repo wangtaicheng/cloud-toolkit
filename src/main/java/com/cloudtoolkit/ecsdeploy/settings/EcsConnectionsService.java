@@ -147,9 +147,65 @@ public final class EcsConnectionsService {
         return names;
     }
 
+    /** All stored tag rows (id + name) for the tag management UI. */
+    public List<CloudToolkitDb.TagRow> listTagRows() {
+        return db.listTags();
+    }
+
+    public @Nullable CloudToolkitDb.TagRow findTagByName(String name) {
+        return db.findTagByName(name);
+    }
+
+    public void createTag(String name) {
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        db.findOrCreateTag(name);
+    }
+
+    public void updateTag(int id, String name) {
+        db.updateTag(id, name);
+    }
+
+    public void deleteTag(int id) {
+        if (db.countHostsByTag(id) > 0) {
+            throw new IllegalStateException("该标签仍被主机使用，无法删除");
+        }
+        db.deleteTag(id);
+    }
+
     /** All stored SSH profiles (for the "use existing profile" mode). */
     public List<CloudToolkitDb.ProfileRow> listProfiles() {
         return db.listProfiles();
+    }
+
+    public @Nullable CloudToolkitDb.ProfileRow findProfileById(int id) {
+        return db.findProfileById(id);
+    }
+
+    public @Nullable CloudToolkitDb.ProfileRow findProfileByName(String name) {
+        return db.findProfileByName(name);
+    }
+
+    public void createProfile(CloudToolkitDb.ProfileRow profile) {
+        if (profile == null || profile.name == null || profile.name.isBlank()) {
+            return;
+        }
+        if (db.findProfileByName(profile.name) != null) {
+            throw new IllegalStateException("Profile 名称已存在：" + profile.name);
+        }
+        db.upsertProfile(profile);
+    }
+
+    public void updateProfile(int id, CloudToolkitDb.ProfileRow profile) {
+        db.updateProfileById(id, profile);
+    }
+
+    public void deleteProfile(int id) {
+        if (db.countHostsByProfile(id) > 0) {
+            throw new IllegalStateException("该 Profile 仍被主机使用，无法删除");
+        }
+        db.deleteProfile(id);
     }
 
     /**
@@ -196,15 +252,6 @@ public final class EcsConnectionsService {
             connection.authType = EcsConnection.AuthType.PASSWORD;
         }
         return connection;
-    }
-
-    private @Nullable CloudToolkitDb.ProfileRow findProfileById(int id) {
-        for (CloudToolkitDb.ProfileRow p : db.listProfiles()) {
-            if (p.id == id) {
-                return p;
-            }
-        }
-        return null;
     }
 
     private @Nullable String tagName(int tagId) {

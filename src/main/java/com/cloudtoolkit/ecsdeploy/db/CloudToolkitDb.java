@@ -181,6 +181,47 @@ public final class CloudToolkitDb {
         }
     }
 
+    /** Update an existing profile's columns by id. */
+    public synchronized void updateProfileById(int id, ProfileRow profile) {
+        String sql = "UPDATE profiles SET name = ?, user = ?, passwd = ?, private_key = ?, pass_phrase = ? "
+                + "WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, profile.name);
+            ps.setString(2, profile.user);
+            ps.setString(3, orNull(profile.passwd));
+            ps.setString(4, orNull(profile.privateKey));
+            ps.setString(5, orNull(profile.passphrase));
+            ps.setInt(6, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("更新 profile 失败", e);
+        }
+    }
+
+    /** Delete a profile by id. */
+    public synchronized void deleteProfile(int id) {
+        String sql = "DELETE FROM profiles WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("删除 profile 失败", e);
+        }
+    }
+
+    /** Number of hosts currently assigned to the given profile. */
+    public synchronized int countHostsByProfile(int profileId) {
+        String sql = "SELECT COUNT(*) FROM hosts WHERE profile_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, profileId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("统计 profile 关联主机失败", e);
+        }
+    }
+
     // ------------------------------------------------------------------------------------------
     // tags
     // ------------------------------------------------------------------------------------------
@@ -238,6 +279,42 @@ public final class CloudToolkitDb {
             }
         } catch (SQLException e) {
             throw new IllegalStateException("创建 tag 失败", e);
+        }
+    }
+
+    /** Update an existing tag's name by id. */
+    public synchronized void updateTag(int id, String name) {
+        String sql = "UPDATE tags SET name = ? WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, name);
+            ps.setInt(2, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("更新 tag 失败", e);
+        }
+    }
+
+    /** Delete a tag by id. */
+    public synchronized void deleteTag(int id) {
+        String sql = "DELETE FROM tags WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("删除 tag 失败", e);
+        }
+    }
+
+    /** Number of hosts currently assigned to the given tag. */
+    public synchronized int countHostsByTag(int tagId) {
+        String sql = "SELECT COUNT(*) FROM hosts WHERE tag_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, tagId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("统计 tag 关联主机失败", e);
         }
     }
 
@@ -415,7 +492,7 @@ public final class CloudToolkitDb {
     // helpers
     // ------------------------------------------------------------------------------------------
 
-    private ProfileRow findProfileById(int id) {
+    public ProfileRow findProfileById(int id) {
         if (id <= 0) {
             return null;
         }

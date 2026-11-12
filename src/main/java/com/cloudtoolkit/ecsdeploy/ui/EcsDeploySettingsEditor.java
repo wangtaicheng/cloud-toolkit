@@ -3,7 +3,6 @@ package com.cloudtoolkit.ecsdeploy.ui;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
 import com.cloudtoolkit.ecsdeploy.util.PathUtils;
-import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
@@ -105,8 +104,7 @@ public final class EcsDeploySettingsEditor extends SettingsEditor<EcsDeployRunCo
 
     @Override
     protected @NotNull JComponent createEditor() {
-        artifactField.addBrowseFolderListener(ProjectManager.getInstance().getDefaultProject(),
-                FileChooserDescriptorFactory.createSingleFileDescriptor().withTitle("选择要上传的文件"));
+        ArtifactFileChooser.attach(ProjectManager.getInstance().getDefaultProject(), artifactField);
 
         ButtonGroup group = new ButtonGroup();
         group.add(mavenRadio);
@@ -235,13 +233,15 @@ public final class EcsDeploySettingsEditor extends SettingsEditor<EcsDeployRunCo
 
     private void syncBuildType() {
         boolean upload = uploadRadio.isSelected();
-        artifactField.setEnabled(upload);
+        // Maven / Gradle may deploy a hand-picked artifact too; leaving the field blank
+        // falls back to the automatic build + artifact detection.
+        artifactField.setEnabled(true);
         if (mavenRadio.isSelected()) {
-            buildHint.setText("部署前自动执行 mvn clean package");
+            buildHint.setText("留空则自动 mvn clean package 并探测 target/*.jar");
         } else if (gradleRadio.isSelected()) {
-            buildHint.setText("部署前自动执行 gradle build");
+            buildHint.setText("留空则自动 gradle build 并探测 build/libs/*.jar");
         } else {
-            buildHint.setText("");
+            buildHint.setText("选择要上传的本地文件");
         }
     }
 

@@ -4,7 +4,6 @@ import com.cloudtoolkit.ecsdeploy.db.CloudToolkitDb;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployContext;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -64,8 +63,7 @@ public final class DeployToHostDialog extends DialogWrapper {
         group.add(gradleRadio);
         mavenRadio.setSelected(true);
 
-        artifactField.addBrowseFolderListener(project,
-                FileChooserDescriptorFactory.createSingleFileDescriptor().withTitle("选择构建产物 / 上传文件"));
+        ArtifactFileChooser.attach(project, artifactField);
 
         EcsConnectionsService service = EcsConnectionsService.getInstance();
         for (String tag : service.listTags()) {

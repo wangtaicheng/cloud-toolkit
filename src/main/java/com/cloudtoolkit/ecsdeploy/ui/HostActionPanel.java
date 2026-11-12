@@ -9,7 +9,6 @@ import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTerminalOpener;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTtyConnector;
-import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -18,13 +17,8 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import org.jetbrains.annotations.NotNull;
 
-import javax.swing.JButton;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
-import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
-import java.awt.Color;
-import java.awt.GridLayout;
+import javax.swing.*;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -89,6 +83,13 @@ public final class HostActionPanel extends JPanel {
                 showMoreMenu(e);
             }
         });
+
+        // 关闭鼠标移入时的 rollover 放大效果，并压缩内边距避免按钮超出单元格宽度
+        for (JButton btn : new JButton[]{deployBtn, testBtn, uploadBtn, terminalBtn, commandBtn, moreBtn}) {
+            btn.setRolloverEnabled(false);
+            btn.setFocusPainted(false);
+            btn.setMargin(new java.awt.Insets(2, 6, 2, 6));
+        }
 
         add(deployBtn);
         add(testBtn);
@@ -199,13 +200,15 @@ public final class HostActionPanel extends JPanel {
                     try {
                         RemoteCommandExecutor executor = new RemoteCommandExecutor();
                         int exists = executor.execute(session, "test -f " + ARTHAS_JAR,
-                                (stderr, line) -> { }, () -> false);
+                                (stderr, line) -> {
+                                }, () -> false);
                         if (exists != 0) {
                             String cmd = "mkdir -p /tmp && (curl -sfLo " + quote(ARTHAS_JAR) + " "
                                     + quote(ARTHAS_URL)
                                     + " || wget -qO " + quote(ARTHAS_JAR) + " " + quote(ARTHAS_URL) + ")";
                             int download = executor.execute(session, cmd,
-                                    (stderr, line) -> { }, () -> false);
+                                    (stderr, line) -> {
+                                    }, () -> false);
                             if (download != 0) {
                                 error = "下载 Arthas 失败 (exit " + download + ")，请检查远端网络";
                                 return;
