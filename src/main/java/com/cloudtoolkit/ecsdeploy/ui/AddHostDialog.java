@@ -4,8 +4,9 @@ import com.cloudtoolkit.ecsdeploy.db.CloudToolkitDb;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
 import com.cloudtoolkit.ecsdeploy.settings.SshProfileCredentials;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.SshClientConfig;
 import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
@@ -796,7 +797,7 @@ public final class AddHostDialog extends DialogWrapper {
         connection.hasPassphrase = !credentials.secret().isEmpty();
 
         String result = EcsConnectionsConfigurable.testConnection(
-                connection, credentials.secret(), new HostKeyPolicy(true));
+                connection, credentials.secret(), HostKeyPolicies.create(), HostKeyPrompts.TRUST);
         boolean ok = "ok".equals(result);
         String description = SshConfigResolver.describe(sshConfig, connection.host);
         String target = description == null

@@ -9,7 +9,8 @@ import com.cloudtoolkit.ecsdeploy.deploy.EcsSshTarget;
 import com.cloudtoolkit.ecsdeploy.deploy.LocalBuilder;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteFileTransfer;
 import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
@@ -63,7 +64,7 @@ public final class EcsDeployRunProfileState implements RunProfileState {
         new Task.Backgroundable(project, "部署到 ECS") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                SshSessionFactory factory = new SshSessionFactory();
+                SshSessionFactory factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST);
                 try {
                     validateHosts(hosts);
                     Path artifact = resolveArtifact(project, options, console);
@@ -110,7 +111,7 @@ public final class EcsDeployRunProfileState implements RunProfileState {
                 options.getRemoteDirectory(), options.getStopCommand(), options.getStartCommand(),
                 options.getBeforeDeployCommand(), options.getAfterDeployCommand());
         EcsSshTarget target = new EcsSshTarget(factory, new RemoteFileTransfer(),
-                new RemoteCommandExecutor(), new HostKeyPolicy());
+                new RemoteCommandExecutor());
         DeployPipeline pipeline = new DeployPipeline(target, console,
                 () -> stopRequested.get() || indicator.isCanceled());
         pipeline.run(context);

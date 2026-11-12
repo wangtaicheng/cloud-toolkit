@@ -3,7 +3,8 @@ package com.cloudtoolkit.ecsdeploy.ui;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsConfigurable;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.cloudtoolkit.ecsdeploy.ui.terminal.SshTerminalOpener;
@@ -193,7 +194,7 @@ public final class HostActionPanel extends JPanel {
 
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                try (SshSessionFactory factory = new SshSessionFactory(new HostKeyPolicy(true))) {
+                try (SshSessionFactory factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST)) {
                     var session = factory.open(c, secret);
                     try {
                         RemoteCommandExecutor executor = new RemoteCommandExecutor();
@@ -285,7 +286,8 @@ public final class HostActionPanel extends JPanel {
         }
         String secret = EcsConnectionsService.getInstance().getSecret(hostId);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String result = EcsConnectionsConfigurable.testConnection(connection, secret, new HostKeyPolicy(true));
+            String result = EcsConnectionsConfigurable.testConnection(connection, secret,
+                    HostKeyPolicies.create(), HostKeyPrompts.TRUST);
             boolean ok = "ok".equals(result);
             String msg = ok ? "连接成功: " + connection.host : result;
             ApplicationManager.getApplication().invokeLater(() -> Messages.showInfoMessage(msg, "Test Connection"));

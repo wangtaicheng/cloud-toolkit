@@ -1,6 +1,7 @@
 package com.cloudtoolkit.ecsdeploy.settings;
 
 import com.cloudtoolkit.ecsdeploy.support.TestSshServer;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
 import com.intellij.testFramework.LightPlatformTestCase;
 
 import java.nio.file.Files;
@@ -37,16 +38,22 @@ public class EcsConnectionsConfigurableTest extends LightPlatformTestCase {
     }
 
     public void testConnectionSucceedsWithCorrectPassword() {
-        assertEquals("ok", EcsConnectionsConfigurable.testConnection(conn("pw"), "pw"));
+        assertEquals("ok", EcsConnectionsConfigurable.testConnection(conn("pw"), "pw", skippingHostKeys()));
     }
 
     public void testConnectionReportsAuthenticationFailure() {
-        assertTrue(EcsConnectionsConfigurable.testConnection(conn("pw"), "wrong").contains("认证"));
+        assertTrue(EcsConnectionsConfigurable.testConnection(conn("pw"), "wrong", skippingHostKeys())
+                .contains("认证"));
     }
 
     public void testConnectionNeverPerformsRemoteWrites() {
-        EcsConnectionsConfigurable.testConnection(conn("pw"), "pw");
+        EcsConnectionsConfigurable.testConnection(conn("pw"), "pw", skippingHostKeys());
         assertEquals(0, server.commandCount());
+    }
+
+    /** The host key of the test server is not in the known hosts file. */
+    private static HostKeyPolicy skippingHostKeys() {
+        return new HostKeyPolicy(true);
     }
 
     public void testAddAndDeletePersistsToDatabase() {

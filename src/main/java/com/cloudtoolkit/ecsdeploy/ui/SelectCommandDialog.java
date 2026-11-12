@@ -4,7 +4,8 @@ import com.cloudtoolkit.ecsdeploy.db.CloudToolkitDb;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.execution.ui.ConsoleViewContentType;
@@ -204,7 +205,7 @@ public final class SelectCommandDialog extends DialogWrapper {
         ConsoleOutputDialog console = new ConsoleOutputDialog(project, "命令输出 - " + target.host);
         console.show();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            try (SshSessionFactory factory = new SshSessionFactory(new HostKeyPolicy(true))) {
+            try (SshSessionFactory factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST)) {
                 var session = factory.open(target, secret);
                 try {
                     int code = new RemoteCommandExecutor().execute(

@@ -18,19 +18,18 @@ public final class EcsSshTarget implements DeployTarget {
     private final SshSessionFactory factory;
     private final RemoteFileTransfer transfer;
     private final RemoteCommandExecutor executor;
-    private final HostKeyPolicy policy;
     private ClientSession session;
 
     public EcsSshTarget(SshSessionFactory factory, RemoteFileTransfer transfer,
-                        RemoteCommandExecutor executor, HostKeyPolicy policy) {
+                        RemoteCommandExecutor executor) {
         this.factory = Objects.requireNonNull(factory);
         this.transfer = Objects.requireNonNull(transfer);
         this.executor = Objects.requireNonNull(executor);
-        this.policy = Objects.requireNonNull(policy);
     }
 
+    /** The host key policy of the session - the same one the factory verifies the keys with. */
     public HostKeyPolicy policy() {
-        return policy;
+        return factory.hostKeyPolicy();
     }
 
     @Override

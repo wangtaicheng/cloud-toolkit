@@ -41,7 +41,7 @@ class EcsSshTargetTest {
     @Test
     void uploadsFileAndRunsStartCommand() throws Exception {
         EcsSshTarget target = new EcsSshTarget(factory, new RemoteFileTransfer(),
-                new RemoteCommandExecutor(), new HostKeyPolicy(true));
+                new RemoteCommandExecutor());
         DeployContext ctx = validContext();
 
         target.prepare(ctx);
@@ -56,7 +56,7 @@ class EcsSshTargetTest {
     @Test
     void blankStopCommandSkipsExecution() throws Exception {
         EcsSshTarget target = new EcsSshTarget(factory, new RemoteFileTransfer(),
-                new RemoteCommandExecutor(), new HostKeyPolicy(true));
+                new RemoteCommandExecutor());
         DeployContext ctx = new DeployContext(connection(), "pw", artifact(), "/opt/app", "  ", "echo started");
 
         target.prepare(ctx);

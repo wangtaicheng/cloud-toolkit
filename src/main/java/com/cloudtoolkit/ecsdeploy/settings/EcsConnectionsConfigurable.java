@@ -2,8 +2,9 @@ package com.cloudtoolkit.ecsdeploy.settings;
 
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshAuthenticationException;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshConnectException;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
-import com.cloudtoolkit.ecsdeploy.transfer.SshConfigResolver;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyTrust;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
@@ -30,8 +31,6 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
-import java.security.PublicKey;
-import java.text.MessageFormat;
 import java.util.List;
 import java.util.ResourceBundle;
 
@@ -63,11 +62,23 @@ public final class EcsConnectionsConfigurable implements Configurable {
     private boolean modified;
 
     public static String testConnection(EcsConnection connection, String secret) {
-        return testConnection(connection, secret, new HostKeyPolicy(true));
+        return testConnection(connection, secret, HostKeyPolicies.create(), HostKeyPrompts.TRUST);
     }
 
     public static String testConnection(EcsConnection connection, String secret, HostKeyPolicy policy) {
-        try (SshSessionFactory factory = new SshSessionFactory(policy);
+        return testConnection(connection, secret, policy, null);
+    }
+
+    /**
+     * Opens a session to check the connection.
+     *
+     * @param hostKeyTrust asks the user whether an unknown host key may be trusted, or {@code null}
+     *                     to refuse unknown keys
+     * @return {@code "ok"} or the reason the connection failed
+     */
+    public static String testConnection(EcsConnection connection, String secret, HostKeyPolicy policy,
+                                        HostKeyTrust hostKeyTrust) {
+        try (SshSessionFactory factory = new SshSessionFactory(policy, hostKeyTrust);
              ClientSession session = factory.open(connection, secret)) {
             return "ok";
         } catch (SshAuthenticationException e) {
@@ -140,7 +151,8 @@ public final class EcsConnectionsConfigurable implements Configurable {
         bottom.add(buttons, BorderLayout.NORTH);
         bottom.add(skipHostKey, BorderLayout.CENTER);
         bottom.add(riskLabel, BorderLayout.SOUTH);
-        riskLabel.setVisible(false);
+        skipHostKey.setSelected(skipHostKeyVerification());
+        riskLabel.setVisible(skipHostKey.isSelected());
 
         skipHostKey.addActionListener(event -> riskLabel.setVisible(skipHostKey.isSelected()));
         save.addActionListener(event -> saveFromForm());
@@ -163,17 +175,23 @@ public final class EcsConnectionsConfigurable implements Configurable {
 
     @Override
     public boolean isModified() {
-        return modified;
+        return modified || skipHostKey.isSelected() != skipHostKeyVerification();
     }
 
     @Override
     public void apply() {
+        CloudToolkitDeploySettings settings = settings();
+        if (settings != null) {
+            settings.setSkipHostKeyVerification(skipHostKey.isSelected());
+        }
         modified = false;
     }
 
     @Override
     public void reset() {
         modified = false;
+        skipHostKey.setSelected(skipHostKeyVerification());
+        riskLabel.setVisible(skipHostKey.isSelected());
         refreshTable();
     }
 
@@ -207,30 +225,11 @@ public final class EcsConnectionsConfigurable implements Configurable {
         }
         String secret = service().getSecret(id);
         HostKeyPolicy policy = new HostKeyPolicy(skipHostKey.isSelected());
-        policy.clearUnknownServerKey();
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            String result = testConnection(connection, secret, policy);
-            PublicKey unknownKey = policy.unknownServerKey();
-            ApplicationManager.getApplication().invokeLater(() -> {
-                if (unknownKey != null) {
-                    confirmHostKey(connection, unknownKey);
-                }
-                publish(result);
-            });
+            String result = testConnection(connection, secret, policy, HostKeyPrompts.TRUST);
+            ApplicationManager.getApplication().invokeLater(() -> publish(result));
         });
-    }
-
-    private static void confirmHostKey(EcsConnection connection, PublicKey key) {
-        // The host key is stored for the address that was really connected to.
-        SshConfigResolver.Target target = SshConfigResolver.resolve(connection);
-        String text = MessageFormat.format(message("dialog.host.key.confirm"),
-                target.host(), HostKeyPolicy.fingerprint(key));
-        int answer = Messages.showYesNoDialog(ProjectManager.getInstance().getDefaultProject(),
-                text, "确认主机密钥", null);
-        if (answer == Messages.YES) {
-            HostKeyPolicy.write(HostKeyPolicy.defaultKnownHosts(), target.host(), target.port(), key);
-        }
     }
 
     private static void publish(String result) {
@@ -285,6 +284,21 @@ public final class EcsConnectionsConfigurable implements Configurable {
 
     private static EcsConnectionsService service() {
         return EcsConnectionsService.getInstance();
+    }
+
+    /** The settings of the plugin, or null when the IDE is not available. */
+    private static CloudToolkitDeploySettings settings() {
+        try {
+            return CloudToolkitDeploySettings.getInstance();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Whether the host keys of the servers are trusted without asking. */
+    private static boolean skipHostKeyVerification() {
+        CloudToolkitDeploySettings settings = settings();
+        return settings != null && settings.isSkipHostKeyVerification();
     }
 
     private static String message(String key) {

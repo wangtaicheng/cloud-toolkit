@@ -1,7 +1,8 @@
 package com.cloudtoolkit.ecsdeploy.ui.terminal;
 
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
@@ -40,7 +41,7 @@ public final class SshTtyConnector implements TtyConnector, Disposable {
     public SshTtyConnector(EcsConnection connection, String secret, String title,
                            String initialCommand) throws IOException {
         this.title = title;
-        this.factory = new SshSessionFactory(new HostKeyPolicy(true));
+        this.factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST);
         try {
             this.session = factory.open(connection, secret);
         } catch (Exception e) {

@@ -8,6 +8,7 @@ import com.cloudtoolkit.ecsdeploy.util.PathUtils;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.future.AuthFuture;
 import org.apache.sshd.client.session.ClientSession;
+import org.apache.sshd.client.session.ClientSessionCreator;
 import org.apache.sshd.common.NamedResource;
 import org.apache.sshd.common.config.keys.FilePasswordProvider;
 import org.apache.sshd.common.util.net.SshdSocketAddress;
@@ -19,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
+import java.security.PublicKey;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -34,6 +36,7 @@ public final class SshSessionFactory implements AutoCloseable {
     private static final int MAX_JUMP_DEPTH = 5;
 
     private final HostKeyPolicy hostKeyPolicy;
+    private final HostKeyTrust hostKeyTrust;
     private final SshClient client;
     /** The OpenSSH configuration to apply; {@code null} means {@code ~/.ssh/config}. */
     private final Path sshConfigFile;
@@ -45,15 +48,26 @@ public final class SshSessionFactory implements AutoCloseable {
     }
 
     public SshSessionFactory(HostKeyPolicy hostKeyPolicy) {
-        this(hostKeyPolicy, null);
+        this(hostKeyPolicy, null, null);
+    }
+
+    public SshSessionFactory(HostKeyPolicy hostKeyPolicy, HostKeyTrust hostKeyTrust) {
+        this(hostKeyPolicy, null, hostKeyTrust);
+    }
+
+    public SshSessionFactory(HostKeyPolicy hostKeyPolicy, Path sshConfigFile) {
+        this(hostKeyPolicy, sshConfigFile, null);
     }
 
     /**
      * @param sshConfigFile the OpenSSH configuration used to resolve host aliases, or
      *                       {@code null} to use {@code ~/.ssh/config}
+     * @param hostKeyTrust   asks the user whether an unknown host key may be trusted, or
+     *                       {@code null} to refuse unknown keys
      */
-    public SshSessionFactory(HostKeyPolicy hostKeyPolicy, Path sshConfigFile) {
+    public SshSessionFactory(HostKeyPolicy hostKeyPolicy, Path sshConfigFile, HostKeyTrust hostKeyTrust) {
         this.hostKeyPolicy = Objects.requireNonNull(hostKeyPolicy);
+        this.hostKeyTrust = hostKeyTrust;
         this.sshConfigFile = sshConfigFile;
         this.client = SshClient.setUpDefaultClient();
         client.setServerKeyVerifier(hostKeyPolicy.verifier());
@@ -66,7 +80,7 @@ public final class SshSessionFactory implements AutoCloseable {
 
     public ClientSession open(EcsConnection connection, String secret)
             throws IOException, SshConnectException, SshAuthenticationException {
-        return open(connection, secret, 0, true);
+        return open(connection, secret, 0, true, true);
     }
 
     /**
@@ -76,6 +90,18 @@ public final class SshSessionFactory implements AutoCloseable {
      *                      it is skipped for a jump host that was opened because of it
      */
     private ClientSession open(EcsConnection connection, String secret, int depth, boolean useConfigJump)
+            throws IOException, SshConnectException, SshAuthenticationException {
+        return open(connection, secret, depth, useConfigJump, true);
+    }
+
+    /**
+     * Opens a session for the given connection.
+     *
+     * @param allowHostKeyTrust whether an unknown host key may still be trusted (and the
+     *                          connection retried) - only the first attempt may do that
+     */
+    private ClientSession open(EcsConnection connection, String secret, int depth, boolean useConfigJump,
+                               boolean allowHostKeyTrust)
             throws IOException, SshConnectException, SshAuthenticationException {
         if (connection == null) {
             throw new SshAuthenticationException("连接不存在，请重新选择");
@@ -96,25 +122,42 @@ public final class SshSessionFactory implements AutoCloseable {
             if (proxy == null) {
                 throw new SshConnectException("跳板机不存在 (id=" + connection.proxyId + ")");
             }
-            String proxySecret = service.getSecret(String.valueOf(connection.proxyId));
-            proxySession = open(proxy, proxySecret, depth + 1, true);
+            String proxySecret = service == null ? null
+                    : service.getSecret(String.valueOf(connection.proxyId));
+            proxySession = open(proxy, proxySecret, depth + 1, true, allowHostKeyTrust);
         } else if (useConfigJump && target.jump() != null) {
-            proxySession = openJump(target.jump(), secret, depth + 1);
+            proxySession = openJump(target.jump(), secret, depth + 1, allowHostKeyTrust);
         }
-        return connect(target, secret, proxySession);
+        try {
+            return connect(target, secret, proxySession);
+        } catch (SshConnectException | SshAuthenticationException e) {
+            if (allowHostKeyTrust && trustUnknownHostKey(target)) {
+                // The key is trusted now: connect again, the known hosts file contains it.
+                return open(connection, secret, depth, useConfigJump, false);
+            }
+            String message = hostKeyMessage(target);
+            if (message == null) {
+                throw e;
+            }
+            if (e instanceof SshConnectException) {
+                throw new SshConnectException(message, e);
+            }
+            throw new SshAuthenticationException(message, e);
+        }
     }
 
     /** Opens the jump host of the OpenSSH configuration (a stored host provides its credentials). */
-    private ClientSession openJump(SshConfigResolver.Target jump, String secret, int depth)
+    private ClientSession openJump(SshConfigResolver.Target jump, String secret, int depth,
+                                   boolean allowHostKeyTrust)
             throws IOException, SshConnectException, SshAuthenticationException {
         EcsConnectionsService service = service();
         if (service != null) {
             EcsConnection stored = service.findByAddress(jump.alias());
             if (stored != null) {
-                return open(stored, service.getSecret(stored.id), depth, false);
+                return open(stored, service.getSecret(stored.id), depth, false, allowHostKeyTrust);
             }
         }
-        return openTarget(jump, secret, depth);
+        return openTarget(jump, secret, depth, allowHostKeyTrust);
     }
 
     /** The local database of the stored hosts, or null when it is not available. */
@@ -127,13 +170,29 @@ public final class SshSessionFactory implements AutoCloseable {
     }
 
     /** Opens a target that was already resolved (used for the jump host chain). */
-    private ClientSession openTarget(SshConfigResolver.Target target, String secret, int depth)
+    private ClientSession openTarget(SshConfigResolver.Target target, String secret, int depth,
+                                     boolean allowHostKeyTrust)
             throws IOException, SshConnectException, SshAuthenticationException {
         ClientSession proxySession = null;
         if (target.jump() != null) {
-            proxySession = openTarget(target.jump(), secret, depth + 1);
+            proxySession = openTarget(target.jump(), secret, depth + 1, allowHostKeyTrust);
         }
-        return connect(target, secret, proxySession);
+        try {
+            return connect(target, secret, proxySession);
+        } catch (SshConnectException | SshAuthenticationException e) {
+            if (allowHostKeyTrust && trustUnknownHostKey(target)) {
+                // The key is trusted now: connect again, the known hosts file contains it.
+                return openTarget(target, secret, depth, false);
+            }
+            String message = hostKeyMessage(target);
+            if (message == null) {
+                throw e;
+            }
+            if (e instanceof SshConnectException) {
+                throw new SshConnectException(message, e);
+            }
+            throw new SshAuthenticationException(message, e);
+        }
     }
 
     /** Connects to the target and authenticates it, optionally through a jump host. */
@@ -148,6 +207,9 @@ public final class SshSessionFactory implements AutoCloseable {
             throw new SshAuthenticationException("私钥口令缺失，请重新输入");
         }
 
+        // The result of the last verification belongs to the attempt that starts now.
+        hostKeyPolicy.reset();
+
         ClientSession session;
         try {
             if (proxySession != null) {
@@ -158,6 +220,8 @@ public final class SshSessionFactory implements AutoCloseable {
                 session = client.connect(target.username(), bound.getHostName(), bound.getPort())
                         .verify(CONNECT_TIMEOUT)
                         .getSession();
+                // The session is tunneled: the host key belongs to the real host, not to the tunnel.
+                session.setAttribute(ClientSessionCreator.TARGET_SERVER, remote);
             } else {
                 session = client.connect(target.username(), target.host(), target.port())
                         .verify(CONNECT_TIMEOUT)
@@ -168,7 +232,8 @@ public final class SshSessionFactory implements AutoCloseable {
             throw new SshConnectException(
                     "无法连接 " + target.host() + ":" + target.port()
                             + (proxySession != null ? " (经跳板机)" : "")
-                            + (target.fromAlias() ? "（SSH 配置 " + target.alias() + "）" : ""), e);
+                            + (target.fromAlias() ? "（SSH 配置 " + target.alias() + "）" : "")
+                            + describe(e), e);
         }
 
         try {
@@ -206,8 +271,55 @@ public final class SshSessionFactory implements AutoCloseable {
         } catch (IOException | RuntimeException e) {
             closeQuietly(session);
             closeQuietly(proxySession);
-            throw new SshAuthenticationException("SSH 认证失败", e);
+            throw new SshAuthenticationException("SSH 认证失败" + describe(e), e);
         }
+    }
+
+    /**
+     * Asks the user whether the key of an unknown host may be trusted and writes it to the known
+     * hosts file, so that the next connection is verified against it.
+     *
+     * @return {@code true} when the key was accepted (the connection may be retried)
+     */
+    private boolean trustUnknownHostKey(SshConfigResolver.Target target) {
+        if (hostKeyTrust == null || hostKeyPolicy.lastDecision() != HostKeyPolicy.Decision.UNKNOWN) {
+            return false;
+        }
+        PublicKey key = hostKeyPolicy.unknownServerKey();
+        String host = hostKeyPolicy.unknownServerHost();
+        if (key == null || host == null) {
+            return false;
+        }
+        if (!host.equalsIgnoreCase(target.host())) {
+            // The unknown key belongs to another host (a jump host for example).
+            return false;
+        }
+        int port = target.port();
+        if (!hostKeyTrust.confirmTrust(target.host(), port, HostKeyPolicy.fingerprint(key))) {
+            return false;
+        }
+        List<String> names = new ArrayList<>();
+        names.add(target.host());
+        String address = hostKeyPolicy.unknownServerAddress();
+        if (address != null && !address.equalsIgnoreCase(target.host())) {
+            names.add(address);
+        }
+        HostKeyPolicy.write(hostKeyPolicy.knownHosts(), names, port, key);
+        return true;
+    }
+
+    /** The message of a failed host key verification, or null when the failure was another one. */
+    private String hostKeyMessage(SshConfigResolver.Target target) {
+        HostKeyPolicy.Decision decision = hostKeyPolicy.lastDecision();
+        if (decision == HostKeyPolicy.Decision.CHANGED) {
+            return "主机密钥已变更：" + target.host() + ":" + target.port()
+                    + " 可能存在中间人攻击风险，已拒绝连接";
+        }
+        if (decision == HostKeyPolicy.Decision.UNKNOWN) {
+            return "未知主机密钥：" + target.host() + ":" + target.port()
+                    + "，未获得信任确认，已拒绝连接";
+        }
+        return null;
     }
 
     /** The OpenSSH configuration in use. */
@@ -237,6 +349,16 @@ public final class SshSessionFactory implements AutoCloseable {
             throw new SshAuthenticationException("无法解析私钥文件：" + path
                     + (fromConfig ? "（该私钥来自 SSH 配置，若已加密请在「属性」中配置口令）" : ""), e);
         }
+    }
+
+    /** The message of the root cause, so that the user sees why the connection failed. */
+    private static String describe(Throwable error) {
+        Throwable root = error;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+        return message == null || message.isBlank() ? "" : ": " + message;
     }
 
     private static void closeQuietly(ClientSession session) {

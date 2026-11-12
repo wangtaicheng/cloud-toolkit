@@ -2,7 +2,8 @@ package com.cloudtoolkit.ecsdeploy.ui;
 
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
@@ -53,7 +54,7 @@ public final class SftpBrowserDialog extends DialogWrapper {
     public SftpBrowserDialog(Project project, EcsConnection target) throws Exception {
         super(project, true);
         this.project = project;
-        this.factory = new SshSessionFactory(new HostKeyPolicy(true));
+        this.factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST);
         try {
             String secret = EcsConnectionsService.getInstance().getSecret(target.id);
             this.session = factory.open(target, secret);

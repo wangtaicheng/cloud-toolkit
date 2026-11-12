@@ -2,7 +2,8 @@ package com.cloudtoolkit.ecsdeploy.ui;
 
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnectionsService;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteFileTransfer;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
@@ -159,7 +160,7 @@ public final class UploadDialog extends DialogWrapper {
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             String secret = EcsConnectionsService.getInstance().getSecret(target.id);
-            try (SshSessionFactory factory = new SshSessionFactory(new HostKeyPolicy(true))) {
+            try (SshSessionFactory factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST)) {
                 var session = factory.open(target, secret);
                 try {
                     if (localFileRadio.isSelected()) {

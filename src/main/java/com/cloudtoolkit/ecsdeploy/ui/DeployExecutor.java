@@ -5,11 +5,11 @@ import com.cloudtoolkit.ecsdeploy.deploy.DeployException;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.DeploymentCanceledException;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployPipeline;
 import com.cloudtoolkit.ecsdeploy.deploy.EcsSshTarget;
-import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicy;
+import com.cloudtoolkit.ecsdeploy.settings.HostKeyPrompts;
+import com.cloudtoolkit.ecsdeploy.transfer.HostKeyPolicies;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteCommandExecutor;
 import com.cloudtoolkit.ecsdeploy.transfer.RemoteFileTransfer;
 import com.cloudtoolkit.ecsdeploy.transfer.SshSessionFactory;
-import com.intellij.execution.configurations.RunProfileState;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
@@ -20,7 +20,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Runs a {@link DeployContext} against an ECS host, streaming output into a Run tool window. */
+/**
+ * Runs a {@link DeployContext} against an ECS host, streaming output into a Run tool window.
+ */
 public final class DeployExecutor {
 
     private DeployExecutor() {
@@ -34,10 +36,10 @@ public final class DeployExecutor {
         new Task.Backgroundable(project, "部署到 ECS") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                SshSessionFactory factory = new SshSessionFactory();
+                SshSessionFactory factory = new SshSessionFactory(HostKeyPolicies.create(), HostKeyPrompts.TRUST);
                 try {
                     EcsSshTarget target = new EcsSshTarget(factory, new RemoteFileTransfer(),
-                            new RemoteCommandExecutor(), new HostKeyPolicy());
+                            new RemoteCommandExecutor());
                     DeployPipeline pipeline = new DeployPipeline(target, console,
                             () -> stopRequested.get() || indicator.isCanceled());
                     pipeline.run(context);

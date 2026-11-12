@@ -1,5 +1,6 @@
 package com.cloudtoolkit.ecsdeploy.transfer;
 
+import com.cloudtoolkit.ecsdeploy.deploy.DeployException;
 import com.cloudtoolkit.ecsdeploy.deploy.DeployException.SshAuthenticationException;
 import com.cloudtoolkit.ecsdeploy.settings.EcsConnection;
 import com.cloudtoolkit.ecsdeploy.support.TestSshServer;
@@ -12,8 +13,12 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.cloudtoolkit.ecsdeploy.settings.EcsConnection.AuthType;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -100,5 +105,43 @@ class SshSessionFactoryTest {
              ClientSession session = aliasFactory.open(c, "pw")) {
             assertTrue(session.isAuthenticated());
         }
+    }
+
+    @Test
+    void trustsAnUnknownHostKeyAfterTheUserConfirmedIt() throws Exception {
+        Path knownHosts = tempDir.resolve("known_hosts");
+        List<String> asked = new ArrayList<>();
+
+        try (SshSessionFactory trusting = new SshSessionFactory(new HostKeyPolicy(false, knownHosts),
+                tempDir.resolve("ssh_config"), (host, port, fingerprint) -> {
+                    asked.add(host + ":" + port);
+                    return true;
+                });
+             ClientSession session = trusting.open(conn(AuthType.PASSWORD), "pw")) {
+            assertTrue(session.isAuthenticated());
+        }
+
+        assertEquals(List.of("127.0.0.1:" + server.port()), asked);
+        assertTrue(Files.exists(knownHosts));
+
+        // The key is known now: a connection without any confirmation succeeds as well.
+        try (SshSessionFactory verifying = new SshSessionFactory(new HostKeyPolicy(false, knownHosts),
+                tempDir.resolve("ssh_config"));
+             ClientSession session = verifying.open(conn(AuthType.PASSWORD), "pw")) {
+            assertTrue(session.isAuthenticated());
+        }
+    }
+
+    @Test
+    void refusesAnUnknownHostKeyTheUserDidNotConfirm() {
+        Path knownHosts = tempDir.resolve("known_hosts");
+
+        try (SshSessionFactory refusing = new SshSessionFactory(new HostKeyPolicy(false, knownHosts),
+                tempDir.resolve("ssh_config"), (host, port, fingerprint) -> false)) {
+            DeployException failure = assertThrows(DeployException.class,
+                    () -> refusing.open(conn(AuthType.PASSWORD), "pw"));
+            assertTrue(failure.getMessage().contains("主机密钥"));
+        }
+        assertFalse(Files.exists(knownHosts));
     }
 }
