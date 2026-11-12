@@ -43,7 +43,15 @@ public final class RemoteFileTransfer {
                         progress.accept(new TransferProgress(transferred, total));
                     }
                 }
-                client.rename(temporary, target, SftpClient.CopyMode.Overwrite);
+                // CopyMode.Overwrite sends a flagged SSH_FXP_RENAME only supported on
+                // SFTP v6+/servers advertising the rename extension. OpenSSH sftp-server
+                // (v3) rejects it with "copy options can not be used with this SFTP
+                // version". Remove any existing target first, then do a plain rename for
+                // maximum compatibility across SFTP versions.
+                if (targetExists(client, target)) {
+                    removeQuietly(client, target);
+                }
+                client.rename(temporary, target);
                 renamed = true;
             } finally {
                 if (!renamed) {
@@ -80,6 +88,15 @@ public final class RemoteFileTransfer {
             client.remove(path);
         } catch (IOException | RuntimeException ignored) {
             // best effort cleanup of the temporary upload
+        }
+    }
+
+    private static boolean targetExists(SftpClient client, String path) {
+        try {
+            client.stat(path);
+            return true;
+        } catch (IOException | RuntimeException missing) {
+            return false;
         }
     }
 }
